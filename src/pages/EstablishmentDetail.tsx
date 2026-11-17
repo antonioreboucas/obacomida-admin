@@ -1,0 +1,634 @@
+import React, { useState, useMemo } from 'react';
+import {
+  ArrowLeft,
+  Store,
+  MapPin,
+  Phone,
+  Mail,
+  FileText,
+  Clock,
+  DollarSign,
+  Star,
+  CheckCircle,
+  PauseCircle,
+  PlayCircle,
+  Edit,
+  History,
+  ShoppingBag,
+  Percent,
+  Sliders,
+} from 'lucide-react';
+import { restaurantService } from '../services/restaurantService';
+import { orderService } from '../services/orderService';
+import { reviewService } from '../services/reviewService';
+import { financialService } from '../services/financialService';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { Badge, type BadgeVariant } from '../components/common/Badge';
+import { Modal } from '../components/common/Modal';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import type { Restaurant, RestaurantStatus } from '../types';
+
+interface EstablishmentDetailProps {
+  restaurantId: string;
+  onBack: () => void;
+  onViewOrder: (orderId: string) => void;
+}
+
+export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
+  restaurantId,
+  onBack,
+  onViewOrder,
+}) => {
+  const { currentUser } = useAuth();
+  const { success, error } = useToast();
+
+  const [restaurant, setRestaurant] = useState<Restaurant | undefined>(() =>
+    restaurantService.getById(restaurantId)
+  );
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'financial' | 'reviews' | 'history'>('overview');
+
+  // Edit commission modal
+  const [isCommissionOpen, setIsCommissionOpen] = useState(false);
+  const [newCommissionRate, setNewCommissionRate] = useState(restaurant?.commissionRate || 12.0);
+  const [newFixedFee, setNewFixedFee] = useState(restaurant?.fixedFee || 1.5);
+  const [commissionJustification, setCommissionJustification] = useState('');
+
+  // Status Action Modal
+  const [actionType, setActionType] = useState<'approve' | 'suspend' | 'activate' | null>(null);
+  const [actionJustification, setActionJustification] = useState('');
+
+  const refreshRestaurant = () => {
+    setRestaurant(restaurantService.getById(restaurantId));
+  };
+
+  const orders = useMemo(() => {
+    return orderService.getByRestaurantId(restaurantId);
+  }, [restaurantId]);
+
+  const reviews = useMemo(() => {
+    return reviewService.getByRestaurantId(restaurantId);
+  }, [restaurantId]);
+
+  const financialRecords = useMemo(() => {
+    return financialService.getByRestaurantId(restaurantId);
+  }, [restaurantId]);
+
+  const financialSummary = useMemo(() => {
+    return financialService.getSummary(restaurantId);
+  }, [restaurantId]);
+
+  if (!restaurant) {
+    return (
+      <div className="bg-white p-12 text-center rounded-2xl border border-slate-200">
+        <p className="text-slate-500 text-sm">Estabelecimento não encontrado.</p>
+        <button onClick={onBack} className="mt-4 text-xs font-bold text-orange-600 hover:underline">
+          ← Voltar para listagem
+        </button>
+      </div>
+    );
+  }
+
+  const getStatusBadgeVariant = (status: RestaurantStatus): BadgeVariant => {
+    switch (status) {
+      case 'Ativo':
+        return 'success';
+      case 'Aprovado':
+        return 'info';
+      case 'Pendente':
+        return 'warning';
+      case 'Em análise':
+        return 'purple';
+      case 'Suspenso':
+        return 'danger';
+      case 'Reprovado':
+        return 'neutral';
+      default:
+        return 'neutral';
+    }
+  };
+
+  const handleSaveCommission = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commissionJustification.trim()) {
+      error('Informe a justificativa para alteração de taxa.');
+      return;
+    }
+
+    restaurantService.updateCommission(
+      restaurant.id,
+      Number(newCommissionRate),
+      Number(newFixedFee),
+      currentUser,
+      commissionJustification
+    );
+
+    success('Taxas e comissões atualizadas com sucesso!');
+    setIsCommissionOpen(false);
+    setCommissionJustification('');
+    refreshRestaurant();
+  };
+
+  const handleConfirmStatusChange = () => {
+    if (!actionType) return;
+
+    if (actionType === 'approve') {
+      restaurantService.approve(restaurant.id, currentUser);
+      success(`Estabelecimento "${restaurant.name}" aprovado.`);
+    } else if (actionType === 'suspend') {
+      restaurantService.suspend(restaurant.id, currentUser, actionJustification);
+      success(`Estabelecimento "${restaurant.name}" suspenso.`);
+    } else if (actionType === 'activate') {
+      restaurantService.activate(restaurant.id, currentUser);
+      success(`Estabelecimento "${restaurant.name}" reativado.`);
+    }
+
+    setActionType(null);
+    setActionJustification('');
+    refreshRestaurant();
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Back button & top actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-orange-600 transition-colors w-fit"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Voltar para Estabelecimentos</span>
+        </button>
+
+        <div className="flex items-center gap-2">
+          {restaurant.status === 'Ativo' ? (
+            <button
+              onClick={() => setActionType('suspend')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-xl border border-amber-200 text-xs font-bold transition-colors"
+            >
+              <PauseCircle className="w-4 h-4" />
+              <span>Suspender Restaurante</span>
+            </button>
+          ) : restaurant.status === 'Suspenso' ? (
+            <button
+              onClick={() => setActionType('activate')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl border border-emerald-200 text-xs font-bold transition-colors"
+            >
+              <PlayCircle className="w-4 h-4" />
+              <span>Reativar Restaurante</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setActionType('approve')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl text-xs font-bold transition-colors"
+            >
+              <CheckCircle className="w-4 h-4" />
+              <span>Aprovar Cadastro</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setIsCommissionOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-700 hover:bg-slate-50 rounded-xl border border-slate-300 text-xs font-bold transition-colors"
+          >
+            <Sliders className="w-4 h-4 text-orange-600" />
+            <span>Editar Comissões</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Hero Profile Card */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        {restaurant.coverImage && (
+          <div className="h-40 w-full relative">
+            <img
+              src={restaurant.coverImage}
+              alt={restaurant.name}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-transparent to-transparent" />
+          </div>
+        )}
+
+        <div className="p-6 relative">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-16 sm:-mt-14 mb-4">
+            <div className="flex items-end gap-4">
+              <img
+                src={restaurant.logo}
+                alt={restaurant.name}
+                className="w-20 h-20 rounded-2xl object-cover ring-4 ring-white shadow-lg bg-white shrink-0"
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900">{restaurant.name}</h1>
+                  <Badge variant={getStatusBadgeVariant(restaurant.status)} dot>
+                    {restaurant.status}
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-500 font-medium">
+                  {restaurant.category} • CNPJ: {restaurant.cnpj}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 text-xs font-semibold">
+              <div className="flex items-center gap-1 text-slate-800">
+                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                <span className="font-bold text-sm">{restaurant.rating.toFixed(1)}</span>
+                <span className="text-slate-400">({reviews.length} avaliações)</span>
+              </div>
+              <div className="h-4 w-px bg-slate-200" />
+              <div>
+                <span className="text-slate-500">Comissão atual: </span>
+                <span className="font-bold text-orange-600">{restaurant.commissionRate}%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="flex items-center gap-2 border-b border-slate-200 pt-2 overflow-x-auto">
+            {[
+              { id: 'overview', label: 'Visão Geral & Cadastro' },
+              { id: 'orders', label: `Pedidos Realizados (${orders.length})` },
+              { id: 'financial', label: 'Dados Financeiros & Extrato' },
+              { id: 'reviews', label: `Avaliações (${reviews.length})` },
+              { id: 'history', label: `Histórico Administrativo (${restaurant.history.length})` },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'border-orange-600 text-orange-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Contents */}
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Informações Cadastrais */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Store className="w-4 h-4 text-orange-600" /> Informações Cadastrais
+            </h3>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <span className="text-slate-400 block font-medium">Responsável</span>
+                <span className="font-bold text-slate-800">{restaurant.ownerName}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">CNPJ</span>
+                <span className="font-bold text-slate-800">{restaurant.cnpj}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Telefone</span>
+                <span className="font-bold text-slate-800">{restaurant.phone}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">E-mail</span>
+                <span className="font-bold text-slate-800">{restaurant.email}</span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-slate-400 block font-medium">Endereço Completo</span>
+                <span className="font-bold text-slate-800">
+                  {restaurant.address}, {restaurant.city} - {restaurant.state} (CEP: {restaurant.zipCode})
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Regras Operacionais */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Clock className="w-4 h-4 text-orange-600" /> Parâmetros de Operação
+            </h3>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <span className="text-slate-400 block font-medium">Tempo Estimado de Entrega</span>
+                <span className="font-bold text-slate-800">
+                  {restaurant.deliveryTimeMin} a {restaurant.deliveryTimeMax} minutos
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Pedido Mínimo</span>
+                <span className="font-bold text-slate-800">R$ {restaurant.minimumOrder.toFixed(2)}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Taxa de Entrega Padrão</span>
+                <span className="font-bold text-slate-800">R$ {restaurant.deliveryFee.toFixed(2)}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Status de Abertura</span>
+                <span className={`font-bold ${restaurant.isOpen ? 'text-emerald-600' : 'text-slate-500'}`}>
+                  {restaurant.isOpen ? 'Loja Aberta' : 'Loja Fechada'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Comissão da Plataforma</span>
+                <span className="font-bold text-orange-600">{restaurant.commissionRate}%</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Taxa Fixa por Pedido</span>
+                <span className="font-bold text-slate-800">R$ {restaurant.fixedFee.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Orders Tab */}
+      {activeTab === 'orders' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-900">Histórico de Pedidos Recebidos</h3>
+            <span className="text-xs text-slate-500 font-semibold">{orders.length} pedidos</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-100">
+                <tr>
+                  <th className="py-2.5 px-4">Código</th>
+                  <th className="py-2.5 px-4">Cliente</th>
+                  <th className="py-2.5 px-4">Data/Hora</th>
+                  <th className="py-2.5 px-4">Valor Total</th>
+                  <th className="py-2.5 px-4">Pagamento</th>
+                  <th className="py-2.5 px-4">Status</th>
+                  <th className="py-2.5 px-4 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                {orders.slice(0, 15).map((o) => (
+                  <tr key={o.id} className="hover:bg-slate-50">
+                    <td className="py-3 px-4 font-bold text-orange-600">{o.code}</td>
+                    <td className="py-3 px-4 font-semibold text-slate-800">{o.customerName}</td>
+                    <td className="py-3 px-4 text-slate-500">{new Date(o.createdAt).toLocaleString('pt-BR')}</td>
+                    <td className="py-3 px-4 font-bold text-slate-900">R$ {o.totalAmount.toFixed(2)}</td>
+                    <td className="py-3 px-4 text-slate-600">{o.paymentMethod}</td>
+                    <td className="py-3 px-4">
+                      <Badge variant={o.status === 'Entregue' ? 'success' : o.status === 'Cancelado' ? 'danger' : 'warning'} dot>
+                        {o.status}
+                      </Badge>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        onClick={() => onViewOrder(o.id)}
+                        className="text-xs font-bold text-orange-600 hover:underline"
+                      >
+                        Ver Detalhes
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Financial Tab */}
+      {activeTab === 'financial' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs text-slate-400 font-medium">Volume Bruto</span>
+              <p className="text-lg font-bold text-slate-900 mt-1">
+                R$ {financialSummary.grossVolume.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs text-slate-400 font-medium">Comissões Oba Comida</span>
+              <p className="text-lg font-bold text-orange-600 mt-1">
+                R$ {financialSummary.totalCommissions.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs text-slate-400 font-medium">Repasses Efetuados</span>
+              <p className="text-lg font-bold text-emerald-600 mt-1">
+                R$ {financialSummary.paidPayouts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs text-slate-400 font-medium">Repasses Pendentes</span>
+              <p className="text-lg font-bold text-amber-600 mt-1">
+                R$ {financialSummary.pendingPayouts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+
+          {/* Extrato Simulado */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-900">Extrato Fictício de Repasses</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-100">
+                  <tr>
+                    <th className="py-2.5 px-4">Pedido</th>
+                    <th className="py-2.5 px-4">Data</th>
+                    <th className="py-2.5 px-4">Valor Bruto</th>
+                    <th className="py-2.5 px-4">Comissão ({restaurant.commissionRate}%)</th>
+                    <th className="py-2.5 px-4">Taxas</th>
+                    <th className="py-2.5 px-4">Líquido Estabelecimento</th>
+                    <th className="py-2.5 px-4">Status Repasse</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {financialRecords.map((rec) => (
+                    <tr key={rec.id} className="hover:bg-slate-50">
+                      <td className="py-3 px-4 font-bold text-orange-600">{rec.orderCode}</td>
+                      <td className="py-3 px-4 text-slate-500">{new Date(rec.date).toLocaleDateString('pt-BR')}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900">R$ {rec.grossAmount.toFixed(2)}</td>
+                      <td className="py-3 px-4 text-rose-600">- R$ {rec.commissionAmount.toFixed(2)}</td>
+                      <td className="py-3 px-4 text-slate-500">- R$ {rec.serviceFee.toFixed(2)}</td>
+                      <td className="py-3 px-4 font-bold text-emerald-600">R$ {rec.netAmount.toFixed(2)}</td>
+                      <td className="py-3 px-4">
+                        <Badge
+                          variant={rec.payoutStatus === 'Pago' ? 'success' : rec.payoutStatus === 'Processado' ? 'info' : 'warning'}
+                          dot
+                        >
+                          {rec.payoutStatus}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                  {financialRecords.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400">
+                        Nenhum registro de repasse gerado até o momento.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reviews Tab */}
+      {activeTab === 'reviews' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
+          <h3 className="text-sm font-bold text-slate-900">Avaliações dos Consumidores</h3>
+          <div className="space-y-3">
+            {reviews.map((rev) => (
+              <div key={rev.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-xs text-slate-900">{rev.customerName}</span>
+                    <span className="text-[10px] text-slate-400">• Pedido {rev.orderCode}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={`w-3.5 h-3.5 ${
+                          star <= rev.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-slate-700 italic">"{rev.comment}"</p>
+                <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                  <span>{new Date(rev.createdAt).toLocaleString('pt-BR')}</span>
+                  {rev.reported && (
+                    <span className="text-rose-600 font-semibold bg-rose-50 px-2 py-0.5 rounded-md">
+                      Denunciada pelo estabelecimento
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+            {reviews.length === 0 && (
+              <p className="text-xs text-slate-400 py-6 text-center">Nenhuma avaliação registrada ainda.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* History Tab */}
+      {activeTab === 'history' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <History className="w-4 h-4 text-orange-600" /> Linha do Tempo e Histórico Administrativo
+          </h3>
+          <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+            {restaurant.history.map((hist, idx) => (
+              <div key={idx} className="relative">
+                <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-orange-600 ring-4 ring-white" />
+                <div className="text-xs">
+                  <p className="font-bold text-slate-900">{hist.action}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Responsável: <strong className="text-slate-700">{hist.adminName}</strong> •{' '}
+                    {new Date(hist.date).toLocaleString('pt-BR')}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Commission Modal */}
+      <Modal
+        isOpen={isCommissionOpen}
+        onClose={() => setIsCommissionOpen(false)}
+        title="Configurar Comissão do Estabelecimento"
+        subtitle={`Defina taxas personalizadas para ${restaurant.name}`}
+      >
+        <form onSubmit={handleSaveCommission} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Comissão da Plataforma (%) *
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              required
+              value={newCommissionRate}
+              onChange={(e) => setNewCommissionRate(Number(e.target.value))}
+              className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Taxa Fixa por Pedido (R$) *
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              required
+              value={newFixedFee}
+              onChange={(e) => setNewFixedFee(Number(e.target.value))}
+              className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Justificativa Administrativa *
+            </label>
+            <textarea
+              required
+              rows={3}
+              value={commissionJustification}
+              onChange={(e) => setCommissionJustification(e.target.value)}
+              placeholder="Ex: Acordo comercial de inauguração ou volume diferenciado de pedidos..."
+              className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsCommissionOpen(false)}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-700 rounded-xl shadow-xs"
+            >
+              Salvar Alterações
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!actionType}
+        onClose={() => setActionType(null)}
+        onConfirm={handleConfirmStatusChange}
+        title={
+          actionType === 'approve'
+            ? 'Aprovar Cadastro'
+            : actionType === 'suspend'
+            ? 'Suspender Restaurante'
+            : 'Reativar Restaurante'
+        }
+        message={
+          actionType === 'suspend'
+            ? 'Informe a justificativa para suspender o estabelecimento.'
+            : `Confirma a ação de ${actionType} para ${restaurant.name}?`
+        }
+        variant={actionType === 'suspend' ? 'danger' : 'primary'}
+        requireReason={actionType === 'suspend'}
+        reasonValue={actionJustification}
+        onReasonChange={setActionJustification}
+        confirmText="Confirmar"
+      />
+    </div>
+  );
+};
