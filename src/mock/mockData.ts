@@ -23,6 +23,7 @@ import type {
   RequesterType,
   PayoutStatus,
 } from '../types';
+import { getDefaultThemeForCategory } from '../utils/themePresets';
 
 // Initial platform settings
 export const initialSettings: PlatformSettings = {
@@ -217,7 +218,7 @@ const cities = [
 ];
 
 // 30 Establishments
-export const initialRestaurants: Restaurant[] = [
+const rawRestaurants: Restaurant[] = [
   {
     id: 'rest-1',
     name: 'Burger Brothers Smash',
@@ -1121,6 +1122,11 @@ export const initialRestaurants: Restaurant[] = [
     history: [{ date: '2025-12-10T15:00:00Z', action: 'Aprovado', adminName: 'Mariana Duarte' }],
   },
 ];
+
+export const initialRestaurants: Restaurant[] = rawRestaurants.map((r) => ({
+  ...r,
+  theme: r.theme || getDefaultThemeForCategory(r.category),
+}));
 
 // Generate 100 Customers
 export const generateCustomers = (): Customer[] => {

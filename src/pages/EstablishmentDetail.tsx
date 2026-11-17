@@ -17,6 +17,8 @@ import {
   ShoppingBag,
   Percent,
   Sliders,
+  Palette,
+  Check,
 } from 'lucide-react';
 import { restaurantService } from '../services/restaurantService';
 import { orderService } from '../services/orderService';
@@ -27,7 +29,9 @@ import { useToast } from '../context/ToastContext';
 import { Badge, type BadgeVariant } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
-import type { Restaurant, RestaurantStatus } from '../types';
+import { StoreThemePicker } from '../components/restaurant/StoreThemePicker';
+import { THEME_PRESETS, getDefaultThemeForCategory } from '../utils/themePresets';
+import type { Restaurant, RestaurantStatus, StoreTheme } from '../types';
 
 interface EstablishmentDetailProps {
   restaurantId: string;
@@ -47,7 +51,11 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
     restaurantService.getById(restaurantId)
   );
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'financial' | 'reviews' | 'history'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'financial' | 'reviews' | 'history' | 'theme'>('overview');
+
+  const [currentTheme, setCurrentTheme] = useState<StoreTheme>(() =>
+    restaurant?.theme || getDefaultThemeForCategory(restaurant?.category || 'Restaurantes')
+  );
 
   // Edit commission modal
   const [isCommissionOpen, setIsCommissionOpen] = useState(false);
@@ -60,7 +68,11 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
   const [actionJustification, setActionJustification] = useState('');
 
   const refreshRestaurant = () => {
-    setRestaurant(restaurantService.getById(restaurantId));
+    const updated = restaurantService.getById(restaurantId);
+    setRestaurant(updated);
+    if (updated?.theme) {
+      setCurrentTheme(updated.theme);
+    }
   };
 
   const orders = useMemo(() => {
@@ -149,6 +161,13 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
     refreshRestaurant();
   };
 
+  const handleSaveTheme = () => {
+    if (!restaurant) return;
+    restaurantService.updateTheme(restaurant.id, currentTheme, currentUser);
+    success(`Identidade visual e cores do app atualizadas para "${restaurant.name}"!`);
+    refreshRestaurant();
+  };
+
   return (
     <div className="space-y-6">
       {/* Back button & top actions */}
@@ -189,6 +208,18 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
           )}
 
           <button
+            onClick={() => setActiveTab('theme')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${
+              activeTab === 'theme'
+                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'
+            }`}
+          >
+            <Palette className={`w-4 h-4 ${activeTab === 'theme' ? 'text-white' : 'text-orange-600'}`} />
+            <span>Cores da Loja (App)</span>
+          </button>
+
+          <button
             onClick={() => setIsCommissionOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-700 hover:bg-slate-50 rounded-xl border border-slate-300 text-xs font-bold transition-colors"
           >
@@ -200,6 +231,14 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
 
       {/* Hero Profile Card */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        {/* Dynamic Multi-Tenant Brand Accent Stripe */}
+        <div
+          className="h-2 w-full transition-all duration-300"
+          style={{
+            background: `linear-gradient(90deg, ${restaurant.theme?.primaryColor || '#FF6600'} 0%, ${restaurant.theme?.secondaryColor || '#E63946'} 100%)`,
+          }}
+        />
+
         {restaurant.coverImage && (
           <div className="h-40 w-full relative">
             <img
@@ -232,7 +271,7 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-4 text-xs font-semibold">
+            <div className="flex flex-wrap items-center gap-4 text-xs font-semibold">
               <div className="flex items-center gap-1 text-slate-800">
                 <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
                 <span className="font-bold text-sm">{restaurant.rating.toFixed(1)}</span>
@@ -240,9 +279,31 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
               </div>
               <div className="h-4 w-px bg-slate-200" />
               <div>
-                <span className="text-slate-500">Comissão atual: </span>
+                <span className="text-slate-500">Comissão: </span>
                 <span className="font-bold text-orange-600">{restaurant.commissionRate}%</span>
               </div>
+              <div className="h-4 w-px bg-slate-200" />
+              <button
+                type="button"
+                onClick={() => setActiveTab('theme')}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Clique para personalizar cores no aplicativo"
+              >
+                <span className="text-slate-500">Tema do App:</span>
+                <div className="flex items-center -space-x-1">
+                  <span
+                    className="w-3.5 h-3.5 rounded-full border border-white shadow-xs"
+                    style={{ backgroundColor: restaurant.theme?.primaryColor || '#FF6600' }}
+                  />
+                  <span
+                    className="w-3.5 h-3.5 rounded-full border border-white shadow-xs"
+                    style={{ backgroundColor: restaurant.theme?.secondaryColor || '#E63946' }}
+                  />
+                </div>
+                <span className="font-bold text-slate-800">
+                  {THEME_PRESETS.find((p) => p.key === restaurant.theme?.presetKey)?.name || 'Personalizado'}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -250,6 +311,7 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
           <div className="flex items-center gap-2 border-b border-slate-200 pt-2 overflow-x-auto">
             {[
               { id: 'overview', label: 'Visão Geral & Cadastro' },
+              { id: 'theme', label: '🎨 Cores da Loja no App' },
               { id: 'orders', label: `Pedidos Realizados (${orders.length})` },
               { id: 'financial', label: 'Dados Financeiros & Extrato' },
               { id: 'reviews', label: `Avaliações (${reviews.length})` },
@@ -341,6 +403,56 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Store Theme Tab */}
+      {activeTab === 'theme' && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Palette className="w-5 h-5 text-orange-600" />
+                  Identidade Visual e Cores da Loja no Aplicativo
+                </h3>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
+                  Multi-Tenant Theming
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Personalize a paleta de cores (primária e secundária) para adequar o app ao segmento do estabelecimento (Açaí, Hamburgueria, Restaurante Luxuoso, Pizzaria, etc).
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (restaurant.theme) setCurrentTheme(restaurant.theme);
+                }}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Restaurar Atual
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveTheme}
+                className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl shadow-xs transition-colors"
+              >
+                <Check className="w-4 h-4" />
+                <span>Salvar Tema da Loja</span>
+              </button>
+            </div>
+          </div>
+
+          <StoreThemePicker
+            theme={currentTheme}
+            onChange={setCurrentTheme}
+            restaurantName={restaurant.name}
+            categoryName={restaurant.category}
+            logoUrl={restaurant.logo}
+          />
         </div>
       )}
 

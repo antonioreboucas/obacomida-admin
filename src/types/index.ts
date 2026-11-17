@@ -15,6 +15,13 @@ export interface AdminUser {
 
 export type RestaurantStatus = 'Pendente' | 'Em análise' | 'Aprovado' | 'Ativo' | 'Suspenso' | 'Reprovado';
 
+export interface StoreTheme {
+  primaryColor: string; // Cor principal da marca (botões, cabeçalho, destaques)
+  secondaryColor: string; // Cor secundária / destaque (gradientes, badges, ícones)
+  presetKey?: string; // Template pré-definido ou customizado
+  textColor?: string; // Cor de texto contrastante
+}
+
 export interface Restaurant {
   id: string;
   name: string;
@@ -42,6 +49,7 @@ export interface Restaurant {
   deliveryTimeMax: number;
   deliveryFee: number;
   isOpen: boolean;
+  theme?: StoreTheme;
   history: {
     date: string;
     action: string;

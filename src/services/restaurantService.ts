@@ -1,5 +1,5 @@
 import { db } from '../storage/db';
-import type { Restaurant, RestaurantStatus, AdminUser } from '../types';
+import type { Restaurant, RestaurantStatus, AdminUser, StoreTheme } from '../types';
 
 export const restaurantService = {
   getAll(): Restaurant[] {
@@ -118,6 +118,19 @@ export const restaurantService = {
       { commissionRate, fixedFee },
       admin,
       `Comissão alterada para ${commissionRate}% e taxa fixa R$ ${fixedFee.toFixed(2)}. Justificativa: ${justification}`
+    );
+  },
+
+  updateTheme(
+    id: string,
+    theme: StoreTheme,
+    admin: AdminUser
+  ): Restaurant | undefined {
+    return this.update(
+      id,
+      { theme },
+      admin,
+      `Tema visual da loja alterado (Primária: ${theme.primaryColor}, Secundária: ${theme.secondaryColor})`
     );
   },
 };
