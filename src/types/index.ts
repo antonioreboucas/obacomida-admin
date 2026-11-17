@@ -296,6 +296,13 @@ export interface PlatformSettings {
   maintenanceMode: boolean;
   autoApproveNewRestaurants: boolean;
   supportOperatingHours: string;
+  // Domínios customizáveis (App e Parceiro)
+  appDomain: string; // ex: 'obacomida.com.br' ou 'app.obacomida.com.br' ou 'localhost:3000'
+  appProtocol: 'https' | 'http';
+  appPathPattern: string; // ex: '/{slug}-app' ou '/{slug}'
+  partnerDomain: string; // ex: 'obacomida.com.br' ou 'parceiro.obacomida.com.br' ou 'localhost:3001'
+  partnerProtocol: 'https' | 'http';
+  partnerPathPattern: string; // ex: '/{slug}'
 }
 
 export interface DashboardMetrics {

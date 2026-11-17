@@ -44,6 +44,12 @@ export const initialSettings: PlatformSettings = {
   maintenanceMode: false,
   autoApproveNewRestaurants: false,
   supportOperatingHours: '08:00 às 23:30 (Segunda a Domingo)',
+  appDomain: 'obacomida.com.br',
+  appProtocol: 'https',
+  appPathPattern: '/{slug}-app',
+  partnerDomain: 'obacomida.com.br',
+  partnerProtocol: 'https',
+  partnerPathPattern: '/{slug}',
 };
 
 // 10 Administrative Users

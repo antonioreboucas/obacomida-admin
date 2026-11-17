@@ -28,7 +28,12 @@ import { Pagination } from '../components/common/Pagination';
 import { StoreThemePicker } from '../components/restaurant/StoreThemePicker';
 import { StoreLinksModal } from '../components/restaurant/StoreLinksModal';
 import { getDefaultThemeForCategory, THEME_PRESETS } from '../utils/themePresets';
-import { generateSlug, sanitizeSlug } from '../utils/slugUtils';
+import {
+  generateSlug,
+  sanitizeSlug,
+  getStoreAppUrlDisplay,
+  getStorePartnerUrlDisplay,
+} from '../utils/slugUtils';
 import type { Restaurant, RestaurantStatus } from '../types';
 
 interface EstablishmentsProps {
@@ -581,7 +586,7 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                   </label>
                   <div className="flex items-center rounded-xl border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-orange-500">
                     <span className="px-2.5 py-2 text-xs font-mono text-slate-400 bg-slate-50 border-r border-slate-200 select-none">
-                      obacomida.com.br/
+                      Identificador (slug):
                     </span>
                     <input
                       type="text"
@@ -595,8 +600,8 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                       className="w-full text-xs font-mono p-2.5 focus:outline-none"
                     />
                   </div>
-                  <p className="text-[10px] text-slate-400 font-mono mt-1 truncate">
-                    App: <strong>obacomida.com.br/{newRestData.slug || 'loja'}-app</strong> | Parceiro: <strong>obacomida.com.br/{newRestData.slug || 'loja'}</strong>
+                  <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">
+                    App: <strong className="text-orange-600">{getStoreAppUrlDisplay(newRestData.slug || 'loja')}</strong> | Parceiro: <strong className="text-slate-700">{getStorePartnerUrlDisplay(newRestData.slug || 'loja')}</strong>
                   </p>
                 </div>
 

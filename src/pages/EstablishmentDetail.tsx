@@ -301,7 +301,7 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
                     title="Clique para ver detalhes do Aplicativo"
                   >
                     <Smartphone className="w-3.5 h-3.5 text-orange-600" />
-                    <span>obacomida.com.br/{restaurant.slug}-app</span>
+                    <span>{getStoreAppUrlDisplay(restaurant.slug)}</span>
                   </button>
 
                   <button
@@ -311,7 +311,7 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
                     title="Clique para ver detalhes do Painel Parceiro"
                   >
                     <LayoutDashboard className="w-3.5 h-3.5 text-slate-600" />
-                    <span>obacomida.com.br/{restaurant.slug}</span>
+                    <span>{getStorePartnerUrlDisplay(restaurant.slug)}</span>
                   </button>
                 </div>
               </div>

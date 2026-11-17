@@ -1,9 +1,10 @@
+import type { PlatformSettings } from '../types';
+
 /**
  * Utilitários de URLs personalizadas e Slugs das lojas Oba Comida.
  *
- * Estrutura de links solicitada:
- * - Aplicativo do Consumidor: obacomida.com.br/{slug}-app
- * - Painel do Parceiro (Restaurante): obacomida.com.br/{slug}
+ * Suporta configuração dinâmica dos domínios do App e do Parceiro
+ * com fallback inteligente para 'obacomida.com.br'.
  */
 
 export function generateSlug(name: string): string {
@@ -24,22 +25,96 @@ export function sanitizeSlug(slug: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-export function getStoreAppUrl(slug: string): string {
-  const clean = sanitizeSlug(slug);
-  return `https://obacomida.com.br/${clean}-app`;
+/**
+ * Recupera configurações salvas no localStorage sem criar dependência circular com o DB
+ */
+function getActiveSettings(): Partial<PlatformSettings> | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('obacomida_settings');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
 }
 
-export function getStorePartnerUrl(slug: string): string {
+/**
+ * Monta a URL completa do Aplicativo do Consumidor
+ * Ex: https://obacomida.com.br/{slug}-app ou https://app.meudominio.com.br/{slug}
+ */
+export function getStoreAppUrl(slug: string, overrideSettings?: Partial<PlatformSettings>): string {
   const clean = sanitizeSlug(slug);
-  return `https://obacomida.com.br/${clean}`;
+  const cfg = overrideSettings || getActiveSettings();
+
+  const domain = (cfg?.appDomain || 'obacomida.com.br')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '');
+  const protocol = cfg?.appProtocol || 'https';
+  const rawPattern = cfg?.appPathPattern || '/{slug}-app';
+
+  const pattern = rawPattern.replace('{slug}', clean);
+  const path = pattern.startsWith('/') ? pattern : `/${pattern}`;
+
+  return `${protocol}://${domain}${path}`;
 }
 
-export function getStoreAppUrlDisplay(slug: string): string {
+/**
+ * Monta a URL completa do Painel do Parceiro
+ * Ex: https://obacomida.com.br/{slug} ou https://parceiro.meudominio.com.br/{slug}
+ */
+export function getStorePartnerUrl(slug: string, overrideSettings?: Partial<PlatformSettings>): string {
   const clean = sanitizeSlug(slug);
-  return `obacomida.com.br/${clean}-app`;
+  const cfg = overrideSettings || getActiveSettings();
+
+  const domain = (cfg?.partnerDomain || 'obacomida.com.br')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '');
+  const protocol = cfg?.partnerProtocol || 'https';
+  const rawPattern = cfg?.partnerPathPattern || '/{slug}';
+
+  const pattern = rawPattern.replace('{slug}', clean);
+  const path = pattern.startsWith('/') ? pattern : `/${pattern}`;
+
+  return `${protocol}://${domain}${path}`;
 }
 
-export function getStorePartnerUrlDisplay(slug: string): string {
+/**
+ * Versão amigável de exibição do link do App (sem http/https)
+ * Ex: obacomida.com.br/nomeloja-app
+ */
+export function getStoreAppUrlDisplay(slug: string, overrideSettings?: Partial<PlatformSettings>): string {
   const clean = sanitizeSlug(slug);
-  return `obacomida.com.br/${clean}`;
+  const cfg = overrideSettings || getActiveSettings();
+
+  const domain = (cfg?.appDomain || 'obacomida.com.br')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '');
+  const rawPattern = cfg?.appPathPattern || '/{slug}-app';
+
+  const pattern = rawPattern.replace('{slug}', clean);
+  const path = pattern.startsWith('/') ? pattern : `/${pattern}`;
+
+  return `${domain}${path}`;
+}
+
+/**
+ * Versão amigável de exibição do link do Parceiro (sem http/https)
+ * Ex: obacomida.com.br/nomeloja
+ */
+export function getStorePartnerUrlDisplay(slug: string, overrideSettings?: Partial<PlatformSettings>): string {
+  const clean = sanitizeSlug(slug);
+  const cfg = overrideSettings || getActiveSettings();
+
+  const domain = (cfg?.partnerDomain || 'obacomida.com.br')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '');
+  const rawPattern = cfg?.partnerPathPattern || '/{slug}';
+
+  const pattern = rawPattern.replace('{slug}', clean);
+  const path = pattern.startsWith('/') ? pattern : `/${pattern}`;
+
+  return `${domain}${path}`;
 }
