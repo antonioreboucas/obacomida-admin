@@ -19,6 +19,10 @@ import {
   Sliders,
   Palette,
   Check,
+  Globe,
+  Copy,
+  Smartphone,
+  LayoutDashboard,
 } from 'lucide-react';
 import { restaurantService } from '../services/restaurantService';
 import { orderService } from '../services/orderService';
@@ -30,7 +34,14 @@ import { Badge, type BadgeVariant } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { StoreThemePicker } from '../components/restaurant/StoreThemePicker';
+import { StoreLinksModal } from '../components/restaurant/StoreLinksModal';
 import { THEME_PRESETS, getDefaultThemeForCategory } from '../utils/themePresets';
+import {
+  getStoreAppUrlDisplay,
+  getStorePartnerUrlDisplay,
+  getStoreAppUrl,
+  getStorePartnerUrl,
+} from '../utils/slugUtils';
 import type { Restaurant, RestaurantStatus, StoreTheme } from '../types';
 
 interface EstablishmentDetailProps {
@@ -56,6 +67,9 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
   const [currentTheme, setCurrentTheme] = useState<StoreTheme>(() =>
     restaurant?.theme || getDefaultThemeForCategory(restaurant?.category || 'Restaurantes')
   );
+
+  // Links Modal
+  const [isLinksOpen, setIsLinksOpen] = useState(false);
 
   // Edit commission modal
   const [isCommissionOpen, setIsCommissionOpen] = useState(false);
@@ -208,6 +222,15 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
           )}
 
           <button
+            onClick={() => setIsLinksOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-700 hover:bg-slate-50 rounded-xl border border-slate-300 text-xs font-bold transition-colors"
+            title="Ver links exclusivos do App e do Painel Parceiro"
+          >
+            <Globe className="w-4 h-4 text-orange-600" />
+            <span>Links da Loja</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('theme')}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${
               activeTab === 'theme'
@@ -268,6 +291,29 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
                 <p className="text-xs text-slate-500 font-medium">
                   {restaurant.category} • CNPJ: {restaurant.cnpj}
                 </p>
+
+                {/* Custom Links Bar */}
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsLinksOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg text-[11px] font-mono font-bold transition-colors cursor-pointer"
+                    title="Clique para ver detalhes do Aplicativo"
+                  >
+                    <Smartphone className="w-3.5 h-3.5 text-orange-600" />
+                    <span>obacomida.com.br/{restaurant.slug}-app</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsLinksOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-mono font-bold transition-colors cursor-pointer"
+                    title="Clique para ver detalhes do Painel Parceiro"
+                  >
+                    <LayoutDashboard className="w-3.5 h-3.5 text-slate-600" />
+                    <span>obacomida.com.br/{restaurant.slug}</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -336,6 +382,92 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
       {/* Tab Contents */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Links e Acessos Exclusivos da Loja */}
+          <div className="col-span-1 md:col-span-2 bg-gradient-to-r from-orange-50/70 via-white to-slate-50 p-5 rounded-2xl border border-orange-200/80 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-orange-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-orange-600" />
+                  Links Oficiais da Loja na Plataforma Oba Comida
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Endereços personalizados para o aplicativo móvel dos clientes e para o portal de gestão do lojista parceiro.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsLinksOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors shrink-0"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>Gerenciar Links & QR Code</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* App Link */}
+              <div className="p-3.5 bg-white rounded-xl border border-orange-200 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Smartphone className="w-4 h-4 text-orange-600" />
+                    Aplicativo do Consumidor (App)
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
+                    Cardápio & Pedidos
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 font-mono text-xs text-orange-700">
+                  <span className="truncate select-all">{getStoreAppUrlDisplay(restaurant.slug)}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(getStoreAppUrl(restaurant.slug));
+                      success('Link do Aplicativo copiado!');
+                    }}
+                    className="p-1 hover:bg-white text-slate-600 hover:text-orange-600 rounded transition-colors"
+                    title="Copiar link do App"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Acessado pelos clientes para consultar o cardápio e realizar pedidos com a identidade visual da loja.
+                </p>
+              </div>
+
+              {/* Partner Portal Link */}
+              <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <LayoutDashboard className="w-4 h-4 text-slate-700" />
+                    Painel do Parceiro (Lojista)
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                    Gestão Operacional
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 font-mono text-xs text-slate-800">
+                  <span className="truncate select-all">{getStorePartnerUrlDisplay(restaurant.slug)}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(getStorePartnerUrl(restaurant.slug));
+                      success('Link do Painel Parceiro copiado!');
+                    }}
+                    className="p-1 hover:bg-white text-slate-600 hover:text-slate-900 rounded transition-colors"
+                    title="Copiar link do Painel Parceiro"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Acessado pelo restaurante parceiro para gerenciar pedidos, cardápio e operação.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Informações Cadastrais */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
@@ -740,6 +872,14 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
         reasonValue={actionJustification}
         onReasonChange={setActionJustification}
         confirmText="Confirmar"
+      />
+
+      {/* Store Links Modal */}
+      <StoreLinksModal
+        isOpen={isLinksOpen}
+        onClose={() => setIsLinksOpen(false)}
+        restaurant={restaurant}
+        onUpdated={refreshRestaurant}
       />
     </div>
   );

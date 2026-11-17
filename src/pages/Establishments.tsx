@@ -15,6 +15,7 @@ import {
   Phone,
   Calendar,
   Palette,
+  Globe,
 } from 'lucide-react';
 import { restaurantService } from '../services/restaurantService';
 import { categoryService } from '../services/categoryService';
@@ -25,7 +26,9 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { Pagination } from '../components/common/Pagination';
 import { StoreThemePicker } from '../components/restaurant/StoreThemePicker';
+import { StoreLinksModal } from '../components/restaurant/StoreLinksModal';
 import { getDefaultThemeForCategory, THEME_PRESETS } from '../utils/themePresets';
+import { generateSlug, sanitizeSlug } from '../utils/slugUtils';
 import type { Restaurant, RestaurantStatus } from '../types';
 
 interface EstablishmentsProps {
@@ -54,11 +57,16 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
   const [actionType, setActionType] = useState<'approve' | 'reject' | 'suspend' | 'activate' | null>(null);
   const [actionJustification, setActionJustification] = useState('');
 
+  // Store Links Modal
+  const [selectedLinksRestaurant, setSelectedLinksRestaurant] = useState<Restaurant | null>(null);
+
   // Register New Restaurant Modal
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createTab, setCreateTab] = useState<'info' | 'theme'>('info');
   const [newRestData, setNewRestData] = useState({
     name: '',
+    slug: '',
+    slugManuallyEdited: false,
     category: 'Hamburguerias',
     ownerName: '',
     phone: '',
@@ -157,10 +165,17 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
     }
 
     const catObj = categories.find((c) => c.name === newRestData.category) || categories[0];
+    const finalSlug = newRestData.slug ? sanitizeSlug(newRestData.slug) : generateSlug(newRestData.name);
+
+    if (!restaurantService.isSlugAvailable(finalSlug)) {
+      error(`O link/slug "${finalSlug}" já está em uso por outro parceiro. Escolha outro identificador.`);
+      return;
+    }
 
     restaurantService.create(
       {
         ...newRestData,
+        slug: finalSlug,
         categoryId: catObj.id,
       },
       currentUser
@@ -307,6 +322,17 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                           {r.name}
                         </p>
                         <p className="text-[10px] text-slate-400 font-mono mt-0.5">{r.cnpj}</p>
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedLinksRestaurant(r);
+                          }}
+                          className="inline-flex items-center gap-1 text-[10px] font-mono text-orange-600 hover:text-orange-700 hover:underline cursor-pointer mt-0.5"
+                          title="Clique para ver os links do App e do Painel Parceiro"
+                        >
+                          <Globe className="w-3 h-3 shrink-0" />
+                          <span className="truncate max-w-[140px]">/{r.slug}-app</span>
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -366,6 +392,14 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
 
                   <td className="py-3.5 px-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        onClick={() => setSelectedLinksRestaurant(r)}
+                        title="Links Oficiais (App & Painel Parceiro)"
+                        className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                      >
+                        <Globe className="w-4 h-4" />
+                      </button>
+
                       <button
                         onClick={() => onViewDetails(r.id)}
                         title="Personalizar Cores / Ver Detalhes"
@@ -528,10 +562,42 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                     type="text"
                     required
                     value={newRestData.name}
-                    onChange={(e) => setNewRestData({ ...newRestData, name: e.target.value })}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      setNewRestData((prev) => ({
+                        ...prev,
+                        name,
+                        slug: prev.slugManuallyEdited ? prev.slug : generateSlug(name),
+                      }));
+                    }}
                     placeholder="Ex: Açaí Puro Sabor / Burguer King Prime"
                     className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Link Exclusivo da Loja (Slug) *
+                  </label>
+                  <div className="flex items-center rounded-xl border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-orange-500">
+                    <span className="px-2.5 py-2 text-xs font-mono text-slate-400 bg-slate-50 border-r border-slate-200 select-none">
+                      obacomida.com.br/
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={newRestData.slug}
+                      onChange={(e) => {
+                        const clean = sanitizeSlug(e.target.value);
+                        setNewRestData({ ...newRestData, slug: clean, slugManuallyEdited: true });
+                      }}
+                      placeholder="nomeloja"
+                      className="w-full text-xs font-mono p-2.5 focus:outline-none"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-mono mt-1 truncate">
+                    App: <strong>obacomida.com.br/{newRestData.slug || 'loja'}-app</strong> | Parceiro: <strong>obacomida.com.br/{newRestData.slug || 'loja'}</strong>
+                  </p>
                 </div>
 
                 <div>
@@ -801,6 +867,16 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
             : 'Reativar'
         }
       />
+
+      {/* Store Links Modal */}
+      {selectedLinksRestaurant && (
+        <StoreLinksModal
+          isOpen={!!selectedLinksRestaurant}
+          onClose={() => setSelectedLinksRestaurant(null)}
+          restaurant={selectedLinksRestaurant}
+          onUpdated={refreshList}
+        />
+      )}
     </div>
   );
 };

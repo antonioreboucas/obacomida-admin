@@ -25,6 +25,9 @@ export interface StoreTheme {
 export interface Restaurant {
   id: string;
   name: string;
+  slug: string; // Identificador da loja na URL (ex: 'acai-tropical')
+  appUrl?: string; // obacomida.com.br/{slug}-app (Aplicativo do Consumidor)
+  partnerUrl?: string; // obacomida.com.br/{slug} (Painel do Parceiro / Restaurante)
   logo: string;
   coverImage?: string;
   category: string;

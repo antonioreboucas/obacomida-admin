@@ -24,6 +24,7 @@ import type {
   PayoutStatus,
 } from '../types';
 import { getDefaultThemeForCategory } from '../utils/themePresets';
+import { generateSlug, getStoreAppUrl, getStorePartnerUrl } from '../utils/slugUtils';
 
 // Initial platform settings
 export const initialSettings: PlatformSettings = {
@@ -218,7 +219,7 @@ const cities = [
 ];
 
 // 30 Establishments
-const rawRestaurants: Restaurant[] = [
+const rawRestaurants: Omit<Restaurant, 'slug' | 'appUrl' | 'partnerUrl'>[] = [
   {
     id: 'rest-1',
     name: 'Burger Brothers Smash',
@@ -1123,10 +1124,16 @@ const rawRestaurants: Restaurant[] = [
   },
 ];
 
-export const initialRestaurants: Restaurant[] = rawRestaurants.map((r) => ({
-  ...r,
-  theme: r.theme || getDefaultThemeForCategory(r.category),
-}));
+export const initialRestaurants: Restaurant[] = rawRestaurants.map((r) => {
+  const slug = generateSlug(r.name);
+  return {
+    ...r,
+    slug,
+    appUrl: getStoreAppUrl(slug),
+    partnerUrl: getStorePartnerUrl(slug),
+    theme: r.theme || getDefaultThemeForCategory(r.category),
+  };
+});
 
 // Generate 100 Customers
 export const generateCustomers = (): Customer[] => {

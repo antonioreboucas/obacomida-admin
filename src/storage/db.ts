@@ -12,6 +12,7 @@ import {
   initialAuditLogs,
   initialSettings,
 } from '../mock/mockData';
+import { generateSlug, getStoreAppUrl, getStorePartnerUrl } from '../utils/slugUtils';
 import type {
   AdminUser,
   Restaurant,
@@ -125,7 +126,37 @@ class MockDatabase {
 
   // Restaurants
   public getRestaurants(): Restaurant[] {
-    return this.getItem<Restaurant[]>(STORAGE_KEYS.RESTAURANTS, initialRestaurants);
+    const list = this.getItem<Restaurant[]>(STORAGE_KEYS.RESTAURANTS, initialRestaurants);
+    let hasChanges = false;
+    const normalized = list.map((r) => {
+      let slug = r.slug;
+      if (!slug) {
+        slug = generateSlug(r.name);
+        hasChanges = true;
+      }
+      const appUrl = r.appUrl || getStoreAppUrl(slug);
+      const partnerUrl = r.partnerUrl || getStorePartnerUrl(slug);
+      if (!r.appUrl || !r.partnerUrl || !r.slug) {
+        hasChanges = true;
+        return {
+          ...r,
+          slug,
+          appUrl,
+          partnerUrl,
+        };
+      }
+      return r;
+    });
+
+    if (hasChanges && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEYS.RESTAURANTS, JSON.stringify(normalized));
+      } catch {
+        // ignore
+      }
+    }
+
+    return normalized;
   }
   public saveRestaurants(restaurants: Restaurant[]): void {
     this.setItem(STORAGE_KEYS.RESTAURANTS, restaurants);
