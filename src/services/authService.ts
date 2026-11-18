@@ -9,7 +9,14 @@ export interface AuthLoginResponse {
   isApiConnected?: boolean;
 }
 
+const SESSION_KEY = 'obacomida_auth_session';
+
 export const authService = {
+  isAuthenticated(): boolean {
+    if (typeof window === 'undefined') return false;
+    return !!(api.getToken() || localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY));
+  },
+
   getCurrentUser(): AdminUser {
     return db.getActiveUser();
   },
@@ -36,7 +43,11 @@ export const authService = {
       if (!data) return null;
 
       const normalizedRole = this.normalizeRole(data.role || (data.roles && data.roles[0]));
-      const isAllowed = normalizedRole === 'SUPER_ADMIN' || normalizedRole === 'ADMIN' || normalizedRole === 'superadmin' || normalizedRole === 'admin';
+      const isAllowed =
+        normalizedRole === 'SUPER_ADMIN' ||
+        normalizedRole === 'ADMIN' ||
+        normalizedRole === 'superadmin' ||
+        normalizedRole === 'admin';
 
       if (!isAllowed) {
         api.clearToken();
@@ -66,8 +77,13 @@ export const authService = {
     }
   },
 
-  async login(email: string, password: string): Promise<AuthLoginResponse> {
+  async login(
+    email: string,
+    password?: string,
+    rememberMe: boolean = true
+  ): Promise<AuthLoginResponse> {
     const cleanEmail = email.trim();
+    const cleanPassword = password || '';
 
     try {
       // Step 1: Attempt login via FastAPI backend POST /api/v1/auth/login
@@ -78,14 +94,14 @@ export const authService = {
         tokenData = await api.post<any>('/auth/login', {
           email: cleanEmail,
           username: cleanEmail,
-          password,
+          password: cleanPassword,
         });
       } catch (jsonErr: any) {
         // Fallback to OAuth2 form-urlencoded if 422 or 415 returned
         if (jsonErr.status === 422 || jsonErr.status === 415) {
           const params = new URLSearchParams();
           params.append('username', cleanEmail);
-          params.append('password', password);
+          params.append('password', cleanPassword);
 
           tokenData = await api.request<any>('/auth/login', {
             method: 'POST',
@@ -144,10 +160,29 @@ export const authService = {
         phone: userData.phone || '(11) 98888-0000',
         createdAt: userData.created_at || new Date().toISOString(),
         lastLogin: new Date().toISOString(),
-        department: userData.department || (normalizedRole === 'SUPER_ADMIN' ? 'Diretoria / Superadmin' : 'Operações & Admin'),
+        department:
+          userData.department ||
+          (normalizedRole === 'SUPER_ADMIN' ? 'Diretoria / Superadmin' : 'Operações & Admin'),
       };
 
       db.setActiveUser(adminUser);
+
+      // Store session
+      if (typeof window !== 'undefined') {
+        const sessionData = JSON.stringify({
+          userId: adminUser.id,
+          email: adminUser.email,
+          role: adminUser.role,
+          name: adminUser.name,
+          loginTime: new Date().toISOString(),
+        });
+        if (rememberMe) {
+          localStorage.setItem(SESSION_KEY, sessionData);
+        } else {
+          sessionStorage.setItem(SESSION_KEY, sessionData);
+        }
+      }
+
       db.logAudit({
         adminId: adminUser.id,
         adminName: adminUser.name,
@@ -162,8 +197,10 @@ export const authService = {
     } catch (err: any) {
       console.warn('Falha na autenticação via API central:', err);
 
-      // If backend is offline or network error, verify if it matches test credentials or fallback mock
-      const isNetworkError = err.status === 0 || err.message?.includes('Falha de conexão') || err.message?.includes('Failed to fetch');
+      const isNetworkError =
+        err.status === 0 ||
+        err.message?.includes('Falha de conexão') ||
+        err.message?.includes('Failed to fetch');
 
       if (isNetworkError) {
         if (!isMockEnabled()) {
@@ -177,7 +214,7 @@ export const authService = {
         const lowerEmail = cleanEmail.toLowerCase();
         if (
           (lowerEmail === 'admin1@obacomida.com.br' || lowerEmail === 'superadmin@obacomida.com.br') &&
-          password === 'Admin@123456'
+          cleanPassword === 'Admin@123456'
         ) {
           const role: AdminRole = lowerEmail === 'superadmin@obacomida.com.br' ? 'SUPER_ADMIN' : 'ADMIN';
           const mockUser: AdminUser = {
@@ -223,6 +260,10 @@ export const authService = {
   },
 
   async logout(): Promise<void> {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(SESSION_KEY);
+    }
     const refreshToken = api.getRefreshToken();
     if (refreshToken) {
       try {

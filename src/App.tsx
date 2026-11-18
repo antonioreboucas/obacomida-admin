@@ -82,7 +82,7 @@ const MainLayout: React.FC = () => {
           onNavigate={(page) => handleNavigate(page)}
         />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 lg:pl-70 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 lg:pl-70 w-full">
           {activePage === 'dashboard' && <Dashboard onNavigate={handleNavigate} />}
 
           {activePage === 'restaurants' && (

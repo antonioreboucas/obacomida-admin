@@ -11,7 +11,7 @@ interface AuthContextType {
   isApiConnected: boolean;
   apiBaseUrl: string;
   checkApiConnection: () => Promise<boolean>;
-  login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, pass?: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   logout: () => void | Promise<void>;
   switchUser: (userId: string) => void;
   switchRole: (role: AdminRole) => void;
@@ -33,7 +33,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<AdminUser>(authService.getCurrentUser());
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    if (isMockEnabled()) return true;
+    if (isMockEnabled()) return authService.isAuthenticated();
     return !!api.getToken();
   });
   const [availableStaff, setAvailableStaff] = useState<AdminUser[]>(adminService.getAll());
@@ -91,8 +91,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [checkApiConnection]);
 
-  const login = useCallback(async (email: string, pass: string) => {
-    const res = await authService.login(email, pass);
+  const login = useCallback(async (email: string, pass?: string, rememberMe: boolean = true) => {
+    const res = await authService.login(email, pass, rememberMe);
     if (res.success && res.user) {
       setCurrentUser(res.user);
       setIsLoggedIn(true);
