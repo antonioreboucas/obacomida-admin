@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Store,
   Plus,
@@ -16,6 +16,7 @@ import {
   Calendar,
   Palette,
   Globe,
+  Loader2,
 } from 'lucide-react';
 import { restaurantService } from '../services/restaurantService';
 import { categoryService } from '../services/categoryService';
@@ -44,7 +45,8 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
   const { currentUser } = useAuth();
   const { success, error, info } = useToast();
 
-  const [restaurants, setRestaurants] = useState<Restaurant[]>(restaurantService.getAll());
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const categories = categoryService.getAll();
 
   // Filters
@@ -57,10 +59,20 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
+  // Lateral Inspection Drawer
+  const [drawerRestaurant, setDrawerRestaurant] = useState<Restaurant | null>(null);
+
   // Status Action Modal
   const [targetRestaurant, setTargetRestaurant] = useState<Restaurant | null>(null);
   const [actionType, setActionType] = useState<'approve' | 'reject' | 'suspend' | 'activate' | null>(null);
   const [actionJustification, setActionJustification] = useState('');
+
+  // Quick Commission Edit Modal
+  const [commissionTarget, setCommissionTarget] = useState<Restaurant | null>(null);
+  const [commissionRateInput, setCommissionRateInput] = useState(12.0);
+  const [commissionFixedInput, setCommissionFixedInput] = useState(1.5);
+  const [commissionJustification, setCommissionJustification] = useState('');
+  const [isSavingCommission, setIsSavingCommission] = useState(false);
 
   // Store Links Modal
   const [selectedLinksRestaurant, setSelectedLinksRestaurant] = useState<Restaurant | null>(null);
@@ -94,9 +106,21 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
     theme: getDefaultThemeForCategory('Hamburguerias'),
   });
 
-  const refreshList = () => {
-    setRestaurants(restaurantService.getAll());
-  };
+  const refreshList = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await restaurantService.fetchAdminRestaurants(statusFilter);
+      setRestaurants(data);
+    } catch (err) {
+      console.warn('Erro ao carregar lista de estabelecimentos:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [statusFilter]);
+
+  useEffect(() => {
+    refreshList();
+  }, [refreshList]);
 
   // Filtered List
   const filtered = useMemo(() => {
@@ -123,43 +147,107 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
   const getStatusBadgeVariant = (status: RestaurantStatus): BadgeVariant => {
     switch (status) {
       case 'Ativo':
+      case 'ACTIVE':
         return 'success';
       case 'Aprovado':
+      case 'APPROVED':
         return 'info';
       case 'Pendente':
+      case 'PENDING':
         return 'warning';
       case 'Em análise':
         return 'purple';
       case 'Suspenso':
+      case 'SUSPENDED':
         return 'danger';
       case 'Reprovado':
+      case 'REJECTED':
         return 'neutral';
       default:
         return 'neutral';
     }
   };
 
-  const handleConfirmStatusChange = () => {
+  const handleConfirmStatusChange = async () => {
     if (!targetRestaurant || !actionType) return;
 
     if (actionType === 'approve') {
-      restaurantService.approve(targetRestaurant.id, currentUser);
-      success(`Restaurante "${targetRestaurant.name}" aprovado com sucesso!`);
+      await restaurantService.updateStatusApi(
+        targetRestaurant.id,
+        'APPROVED',
+        currentUser,
+        actionJustification || 'Documentação e alvará validados com sucesso.'
+      );
+      success(`Restaurante "${targetRestaurant.name}" homologado e aprovado com sucesso!`);
     } else if (actionType === 'reject') {
-      restaurantService.reject(targetRestaurant.id, currentUser, actionJustification);
+      await restaurantService.updateStatusApi(
+        targetRestaurant.id,
+        'REJECTED',
+        currentUser,
+        actionJustification || 'Documentação ou alvará reprovado pela moderação.'
+      );
       info(`Restaurante "${targetRestaurant.name}" reprovado.`);
     } else if (actionType === 'suspend') {
-      restaurantService.suspend(targetRestaurant.id, currentUser, actionJustification);
+      await restaurantService.updateStatusApi(
+        targetRestaurant.id,
+        'SUSPENDED',
+        currentUser,
+        actionJustification || 'Suspensão preventiva aplicada pela moderação.'
+      );
       info(`Restaurante "${targetRestaurant.name}" suspenso preventivamente.`);
     } else if (actionType === 'activate') {
-      restaurantService.activate(targetRestaurant.id, currentUser);
+      await restaurantService.updateStatusApi(
+        targetRestaurant.id,
+        'ACTIVE',
+        currentUser,
+        actionJustification || 'Reativação operacional efetuada.'
+      );
       success(`Restaurante "${targetRestaurant.name}" ativado com sucesso!`);
+    }
+
+    if (drawerRestaurant?.id === targetRestaurant.id) {
+      const updated = restaurantService.getById(targetRestaurant.id);
+      if (updated) setDrawerRestaurant(updated);
     }
 
     setTargetRestaurant(null);
     setActionType(null);
     setActionJustification('');
     refreshList();
+  };
+
+  const handleOpenCommissionModal = (r: Restaurant) => {
+    setCommissionTarget(r);
+    setCommissionRateInput(r.commissionRate);
+    setCommissionFixedInput(r.fixedFee);
+    setCommissionJustification('');
+  };
+
+  const handleSaveCommission = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commissionTarget) return;
+
+    setIsSavingCommission(true);
+    try {
+      await restaurantService.updateCommissionApi(
+        commissionTarget.id,
+        commissionRateInput,
+        commissionFixedInput,
+        currentUser,
+        commissionJustification || 'Ajuste contratual administrativo'
+      );
+      success(`Comissão de "${commissionTarget.name}" atualizada para ${commissionRateInput}%!`);
+      if (drawerRestaurant?.id === commissionTarget.id) {
+        const updated = restaurantService.getById(commissionTarget.id);
+        if (updated) setDrawerRestaurant(updated);
+      }
+      setCommissionTarget(null);
+      refreshList();
+    } catch (err: any) {
+      error('Falha ao atualizar comissão:', err.message);
+    } finally {
+      setIsSavingCommission(false);
+    }
   };
 
   const handleCreateRestaurant = (e: React.FormEvent) => {
@@ -313,9 +401,23 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-              {paginated.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-3.5 px-4">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                    <Loader2 className="w-6 h-6 animate-spin text-orange-600 mx-auto mb-2" />
+                    <span>Carregando estabelecimentos (/admin/restaurants)...</span>
+                  </td>
+                </tr>
+              ) : paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                    Nenhum estabelecimento encontrado para os filtros selecionados.
+                  </td>
+                </tr>
+              ) : (
+                paginated.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-3.5 px-4">
                     <div className="flex items-center gap-3">
                       <img
                         src={r.logo}
@@ -398,6 +500,22 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                   <td className="py-3.5 px-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <button
+                        onClick={() => setDrawerRestaurant(r)}
+                        title="Inspecionar Dados e Ações Rápidas (Drawer Lateral)"
+                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <SlidersHorizontal className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenCommissionModal(r)}
+                        title="Configurar Alíquota de Comissão (%)"
+                        className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                      >
+                        <span className="font-bold text-xs">%</span>
+                      </button>
+
+                      <button
                         onClick={() => setSelectedLinksRestaurant(r)}
                         title="Links Oficiais (App & Painel Parceiro)"
                         className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
@@ -415,7 +533,7 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
 
                       <button
                         onClick={() => onViewDetails(r.id)}
-                        title="Ver detalhes do estabelecimento"
+                        title="Ver detalhes completos do estabelecimento"
                         className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                       >
                         <Eye className="w-4 h-4" />
@@ -477,15 +595,8 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                     </div>
                   </td>
                 </tr>
-              ))}
-
-              {paginated.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    Nenhum estabelecimento encontrado para os filtros selecionados.
-                  </td>
-                </tr>
-              )}
+              ))
+            )}
             </tbody>
           </table>
         </div>
@@ -881,6 +992,323 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
           restaurant={selectedLinksRestaurant}
           onUpdated={refreshList}
         />
+      )}
+
+      {/* Quick Commission Edit Modal (PATCH /api/v1/admin/restaurants/{id}/commission) */}
+      <Modal
+        isOpen={!!commissionTarget}
+        onClose={() => setCommissionTarget(null)}
+        title="Configurar Alíquota de Comissão"
+        subtitle={`Defina as taxas personalizadas para "${commissionTarget?.name}"`}
+      >
+        <form onSubmit={handleSaveCommission} className="space-y-4">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+            <p className="font-bold">Ajuste Contratual de Comissão</p>
+            <p className="mt-0.5 text-[11px] text-amber-700">
+              Esta alteração incidirá diretamente sobre os repasses e faturamento dos próximos pedidos realizados neste estabelecimento.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Alíquota de Comissão (%) *
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  required
+                  value={commissionRateInput}
+                  onChange={(e) => setCommissionRateInput(Number(e.target.value))}
+                  className="w-full text-xs font-bold border border-slate-300 rounded-xl p-2.5 pr-8 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                />
+                <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Taxa Fixa por Pedido (R$) *
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  required
+                  value={commissionFixedInput}
+                  onChange={(e) => setCommissionFixedInput(Number(e.target.value))}
+                  className="w-full text-xs font-bold border border-slate-300 rounded-xl p-2.5 pr-8 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                />
+                <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">R$</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Justificativa Administrativa
+            </label>
+            <textarea
+              rows={2}
+              value={commissionJustification}
+              onChange={(e) => setCommissionJustification(e.target.value)}
+              placeholder="Ex: Renegociação contratual de exclusividade ou incentivo inicial..."
+              className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setCommissionTarget(null)}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isSavingCommission}
+              className="px-4 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-700 rounded-xl shadow-xs disabled:opacity-50"
+            >
+              {isSavingCommission ? 'Salvando...' : 'Salvar Alíquota'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Lateral Inspection Drawer (Checklist Item 2) */}
+      {drawerRestaurant && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in">
+          <div
+            className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-y-auto animate-in slide-in-from-right duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Drawer Header */}
+            <div className="p-5 border-b border-slate-200 flex items-start justify-between bg-slate-50/70">
+              <div className="flex items-center gap-3">
+                <img
+                  src={drawerRestaurant.logo}
+                  alt={drawerRestaurant.name}
+                  className="w-12 h-12 rounded-xl object-cover ring-1 ring-slate-200"
+                />
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 leading-tight">
+                    {drawerRestaurant.name}
+                  </h2>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant={getStatusBadgeVariant(drawerRestaurant.status)} dot>
+                      {drawerRestaurant.status}
+                    </Badge>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {drawerRestaurant.category}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setDrawerRestaurant(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Drawer Quick Actions Bar */}
+            <div className="p-4 border-b border-slate-100 bg-white flex flex-wrap items-center gap-2">
+              {(drawerRestaurant.status === 'Pendente' || drawerRestaurant.status === 'PENDING' || drawerRestaurant.status === 'Em análise') && (
+                <>
+                  <button
+                    onClick={() => {
+                      setTargetRestaurant(drawerRestaurant);
+                      setActionType('approve');
+                    }}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-xs"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Aprovar Loja</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTargetRestaurant(drawerRestaurant);
+                      setActionType('reject');
+                    }}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors shadow-xs"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    <span>Reprovar</span>
+                  </button>
+                </>
+              )}
+
+              {(drawerRestaurant.status === 'Ativo' || drawerRestaurant.status === 'ACTIVE') && (
+                <button
+                  onClick={() => {
+                    setTargetRestaurant(drawerRestaurant);
+                    setActionType('suspend');
+                  }}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-xl transition-colors"
+                >
+                  <PauseCircle className="w-4 h-4" />
+                  <span>Suspender Loja</span>
+                </button>
+              )}
+
+              {(drawerRestaurant.status === 'Suspenso' || drawerRestaurant.status === 'SUSPENDED') && (
+                <button
+                  onClick={() => {
+                    setTargetRestaurant(drawerRestaurant);
+                    setActionType('activate');
+                  }}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-xl transition-colors"
+                >
+                  <PlayCircle className="w-4 h-4" />
+                  <span>Reativar Loja</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => handleOpenCommissionModal(drawerRestaurant)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                title="Configurar Comissão"
+              >
+                <span>% Comissão</span>
+              </button>
+            </div>
+
+            {/* Drawer Body: Inspection Details */}
+            <div className="p-5 space-y-5 text-xs text-slate-700 flex-1">
+              {/* Documentos & Dados Cadastrais */}
+              <div className="space-y-2.5">
+                <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider text-slate-400">
+                  Documentação & Dados Cadastrais
+                </h3>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">CNPJ:</span>
+                    <span className="font-mono font-bold text-slate-800">{drawerRestaurant.cnpj}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Responsável:</span>
+                    <span className="font-semibold text-slate-800">{drawerRestaurant.ownerName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Telefone / WhatsApp:</span>
+                    <span className="font-medium text-slate-800">{drawerRestaurant.phone}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">E-mail:</span>
+                    <span className="font-medium text-slate-800">{drawerRestaurant.email}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Localização:</span>
+                    <span className="font-medium text-slate-800">{drawerRestaurant.city} - {drawerRestaurant.state}</span>
+                  </div>
+                  <div className="pt-1 border-t border-slate-200 text-slate-500">
+                    <span className="block text-[10px] text-slate-400">Endereço Completo:</span>
+                    <span className="font-medium text-slate-700">{drawerRestaurant.address} (CEP: {drawerRestaurant.zipCode})</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Condições Comerciais */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider text-slate-400">
+                    Condições Comerciais
+                  </h3>
+                  <button
+                    onClick={() => handleOpenCommissionModal(drawerRestaurant)}
+                    className="text-[11px] font-bold text-orange-600 hover:underline"
+                  >
+                    Editar Taxas
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                    <span className="text-[10px] text-slate-400 block font-semibold">Comissão Plataforma</span>
+                    <span className="text-base font-extrabold text-orange-600">
+                      {drawerRestaurant.commissionRate}%
+                    </span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                    <span className="text-[10px] text-slate-400 block font-semibold">Taxa Fixa / Pedido</span>
+                    <span className="text-base font-extrabold text-slate-800">
+                      R$ {drawerRestaurant.fixedFee.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                    <span className="text-[10px] text-slate-400 block font-semibold">Pedido Mínimo</span>
+                    <span className="text-sm font-bold text-slate-800">
+                      R$ {drawerRestaurant.minimumOrder.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                    <span className="text-[10px] text-slate-400 block font-semibold">Tempo de Entrega</span>
+                    <span className="text-sm font-bold text-slate-800">
+                      {drawerRestaurant.deliveryTimeMin}-{drawerRestaurant.deliveryTimeMax} min
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Links Dedicados & Identidade */}
+              <div className="space-y-2.5">
+                <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider text-slate-400">
+                  Links & Identidade Visual
+                </h3>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Link App:</span>
+                    <span className="font-mono text-orange-600 font-bold">/{drawerRestaurant.slug}-app</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Painel Parceiro:</span>
+                    <span className="font-mono text-slate-800 font-bold">/{drawerRestaurant.slug}</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-200">
+                    <span className="text-slate-500">Cores da Loja:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="w-4 h-4 rounded-full border border-white shadow-xs"
+                        style={{ backgroundColor: drawerRestaurant.theme?.primaryColor || '#FF6600' }}
+                        title={`Primária: ${drawerRestaurant.theme?.primaryColor || '#FF6600'}`}
+                      />
+                      <span
+                        className="w-4 h-4 rounded-full border border-white shadow-xs"
+                        style={{ backgroundColor: drawerRestaurant.theme?.secondaryColor || '#E63946' }}
+                        title={`Secundária: ${drawerRestaurant.theme?.secondaryColor || '#E63946'}`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Drawer Footer */}
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+              <button
+                onClick={() => setDrawerRestaurant(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Fechar Drawer
+              </button>
+              <button
+                onClick={() => {
+                  const id = drawerRestaurant.id;
+                  setDrawerRestaurant(null);
+                  onViewDetails(id);
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl shadow-xs"
+              >
+                Ver Ficha Cadastral Completa →
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

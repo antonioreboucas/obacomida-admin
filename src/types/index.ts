@@ -1,11 +1,16 @@
-export type AdminRole = 'superadmin' | 'admin' | 'operator' | 'financial';
+export type BackendRole = 'SUPER_ADMIN' | 'ADMIN' | 'PARTNER' | 'CUSTOMER';
+export type LegacyRole = 'superadmin' | 'admin' | 'operator' | 'financial';
+export type AdminRole = BackendRole | LegacyRole;
 
 export interface AdminUser {
   id: string;
   name: string;
   email: string;
   role: AdminRole;
+  roles?: string[];
   status: 'Ativo' | 'Inativo';
+  is_active?: boolean;
+  is_blocked?: boolean;
   avatar?: string;
   phone: string;
   createdAt: string;
@@ -13,7 +18,9 @@ export interface AdminUser {
   department: string;
 }
 
-export type RestaurantStatus = 'Pendente' | 'Em análise' | 'Aprovado' | 'Ativo' | 'Suspenso' | 'Reprovado';
+export type BackendRestaurantStatus = 'PENDING' | 'APPROVED' | 'ACTIVE' | 'PAUSED' | 'SUSPENDED' | 'REJECTED';
+export type LegacyRestaurantStatus = 'Pendente' | 'Em análise' | 'Aprovado' | 'Ativo' | 'Pausado' | 'Suspenso' | 'Reprovado';
+export type RestaurantStatus = BackendRestaurantStatus | LegacyRestaurantStatus;
 
 export interface StoreTheme {
   primaryColor: string; // Cor principal da marca (botões, cabeçalho, destaques)
@@ -142,9 +149,12 @@ export interface Category {
   name: string;
   slug: string;
   icon: string;
+  icon_url?: string;
   image: string;
   displayOrder: number;
+  sort_order?: number;
   active: boolean;
+  is_active?: boolean;
   productsCount: number;
   description?: string;
 }
@@ -275,8 +285,67 @@ export interface AuditLog {
   timestamp: string;
   entityId: string;
   details: string;
+  user_id?: string;
+  entity_name?: string;
+  ip_address?: string;
+  changes?: {
+    before?: Record<string, any>;
+    after?: Record<string, any>;
+    [key: string]: any;
+  };
   previousValue?: string;
   currentValue?: string;
+}
+
+export interface FinancialCommission {
+  id: string;
+  restaurant_id: string;
+  restaurant_name?: string;
+  order_id: string;
+  order_code?: string;
+  order_amount: number;
+  commission_rate: number;
+  commission_amount: number;
+  net_amount: number;
+  is_settled: boolean;
+  settled_at?: string;
+  created_at: string;
+}
+
+export interface FinancialTransaction {
+  id: string;
+  order_id?: string;
+  restaurant_id?: string;
+  restaurant_name?: string;
+  type: 'CREDIT' | 'DEBIT' | 'COMMISSION' | 'PAYOUT';
+  amount: number;
+  status: 'COMPLETED' | 'PENDING' | 'FAILED';
+  payment_method?: string;
+  created_at: string;
+  description?: string;
+}
+
+export interface AdminOverviewKPIs {
+  total_gmv: number;
+  platform_revenue: number;
+  total_orders: number;
+  active_restaurants: number;
+  total_customers: number;
+  average_ticket?: number;
+}
+
+export interface SalesByCategoryItem {
+  category: string;
+  revenue: number;
+  count: number;
+  percentage?: number;
+}
+
+export interface TopRestaurantItem {
+  id: string;
+  name: string;
+  orders: number;
+  revenue: number;
 }
 
 export interface PlatformSettings {

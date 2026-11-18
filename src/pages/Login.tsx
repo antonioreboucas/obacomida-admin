@@ -7,11 +7,11 @@ import { Modal } from '../components/common/Modal';
 import type { AdminRole } from '../types';
 
 export const LoginPage: React.FC = () => {
-  const { login, availableStaff } = useAuth();
+  const { login, availableStaff, isApiConnected, apiBaseUrl } = useAuth();
   const { success, error, info } = useToast();
 
-  const [email, setEmail] = useState('carlos.super@obacomida.com.br');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('admin1@obacomida.com.br');
+  const [password, setPassword] = useState('Admin@123456');
   const [isLoading, setIsLoading] = useState(false);
 
   // Recovery modal
@@ -144,39 +144,102 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
+          {/* API Target Status Bar */}
+          <div className="mt-4 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-2 truncate">
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  isApiConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                }`}
+              />
+              <span className="text-slate-400 truncate">
+                API: <span className="font-mono text-slate-200">{apiBaseUrl}</span>
+              </span>
+            </div>
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                isApiConnected
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              }`}
+            >
+              {isApiConnected ? 'Online' : 'Aguardando Servidor'}
+            </span>
+          </div>
+
           {/* Quick Demo Impersonation section */}
-          <div className="mt-6 pt-6 border-t border-slate-800">
+          <div className="mt-5 pt-5 border-t border-slate-800">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 text-center">
-              Acesso Rápido por Perfil (Demo)
+              Credenciais Oficiais de Teste (API Seed)
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  setEmail('admin1@obacomida.com.br');
+                  setPassword('Admin@123456');
+                  setIsLoading(true);
+                  const res = await login('admin1@obacomida.com.br', 'Admin@123456');
+                  setIsLoading(false);
+                  if (res.success) {
+                    success('Autenticado com sucesso!', 'Perfil: ADMIN');
+                  } else {
+                    error('Falha no login', res.error || 'Credenciais inválidas');
+                  }
+                }}
+                className="p-2.5 rounded-xl border border-blue-500/40 bg-blue-950/30 hover:bg-blue-950/60 text-left transition-colors group"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold text-blue-400 group-hover:text-blue-300">
+                    ADMIN
+                  </p>
+                  <span className="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.2 rounded font-mono">
+                    Oficial
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-300 truncate mt-0.5">admin1@obacomida.com.br</p>
+                <p className="text-[9px] text-slate-500 font-mono">Admin@123456</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setEmail('superadmin@obacomida.com.br');
+                  setPassword('Admin@123456');
+                  setIsLoading(true);
+                  const res = await login('superadmin@obacomida.com.br', 'Admin@123456');
+                  setIsLoading(false);
+                  if (res.success) {
+                    success('Autenticado com sucesso!', 'Perfil: SUPER_ADMIN');
+                  } else {
+                    error('Falha no login', res.error || 'Credenciais inválidas');
+                  }
+                }}
+                className="p-2.5 rounded-xl border border-purple-500/40 bg-purple-950/30 hover:bg-purple-950/60 text-left transition-colors group"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold text-purple-400 group-hover:text-purple-300">
+                    SUPER_ADMIN
+                  </p>
+                  <span className="text-[9px] bg-purple-500/20 text-purple-300 px-1.5 py-0.2 rounded font-mono">
+                    Oficial
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-300 truncate mt-0.5">superadmin@obacomida.com.br</p>
+                <p className="text-[9px] text-slate-500 font-mono">Admin@123456</p>
+              </button>
+            </div>
+
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 text-center">
+              Perfis de Demonstração Local
             </p>
 
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => handleQuickLogin('superadmin')}
-                className="p-2.5 rounded-xl border border-purple-500/30 bg-purple-950/20 hover:bg-purple-950/40 text-left transition-colors group"
-              >
-                <p className="text-[11px] font-bold text-purple-300 group-hover:text-purple-200">
-                  Superadmin
-                </p>
-                <p className="text-[10px] text-slate-400 truncate">Carlos Albuquerque</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin')}
-                className="p-2.5 rounded-xl border border-blue-500/30 bg-blue-950/20 hover:bg-blue-950/40 text-left transition-colors group"
-              >
-                <p className="text-[11px] font-bold text-blue-300 group-hover:text-blue-200">
-                  Administrador
-                </p>
-                <p className="text-[10px] text-slate-400 truncate">Mariana Duarte</p>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => handleQuickLogin('operator')}
-                className="p-2.5 rounded-xl border border-amber-500/30 bg-amber-950/20 hover:bg-amber-950/40 text-left transition-colors group"
+                className="p-2 rounded-xl border border-amber-500/30 bg-amber-950/20 hover:bg-amber-950/40 text-left transition-colors group"
               >
                 <p className="text-[11px] font-bold text-amber-300 group-hover:text-amber-200">
                   Operador
@@ -187,7 +250,7 @@ export const LoginPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handleQuickLogin('financial')}
-                className="p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-950/20 hover:bg-emerald-950/40 text-left transition-colors group"
+                className="p-2 rounded-xl border border-emerald-500/30 bg-emerald-950/20 hover:bg-emerald-950/40 text-left transition-colors group"
               >
                 <p className="text-[11px] font-bold text-emerald-300 group-hover:text-emerald-200">
                   Financeiro

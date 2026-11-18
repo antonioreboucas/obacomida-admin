@@ -27,23 +27,43 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSearch,
   onNavigate,
 }) => {
-  const { currentUser, switchRole, logout } = useAuth();
+  const { currentUser, switchRole, logout, isApiConnected, apiBaseUrl, checkApiConnection } = useAuth();
   const { info, success } = useToast();
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isCheckingApi, setIsCheckingApi] = useState(false);
 
-  const roleLabels: Record<AdminRole, string> = {
+  const roleLabels: Record<string, string> = {
+    SUPER_ADMIN: 'Super Administrador',
+    ADMIN: 'Administrador Oficial',
+    PARTNER: 'Parceiro / Lojista',
+    CUSTOMER: 'Consumidor',
     superadmin: 'Superadministrador',
     admin: 'Administrador',
     operator: 'Operador',
     financial: 'Financeiro',
   };
 
-  const roleColors: Record<AdminRole, string> = {
+  const roleColors: Record<string, string> = {
+    SUPER_ADMIN: 'bg-purple-100 text-purple-800 border-purple-200',
+    ADMIN: 'bg-blue-100 text-blue-800 border-blue-200',
+    PARTNER: 'bg-orange-100 text-orange-800 border-orange-200',
+    CUSTOMER: 'bg-slate-100 text-slate-800 border-slate-200',
     superadmin: 'bg-purple-100 text-purple-800 border-purple-200',
     admin: 'bg-blue-100 text-blue-800 border-blue-200',
     operator: 'bg-amber-100 text-amber-800 border-amber-200',
     financial: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  };
+
+  const handleCheckApi = async () => {
+    setIsCheckingApi(true);
+    const ok = await checkApiConnection();
+    setIsCheckingApi(false);
+    if (ok) {
+      success('API Conectada!', `Servidor FastAPI respondendo em ${apiBaseUrl}`);
+    } else {
+      info('API Offline', `Tentativa de conexão com ${apiBaseUrl} não obteve resposta.`);
+    }
   };
 
   // Quick live notifications
@@ -84,8 +104,29 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
       </div>
 
-      {/* Right side: Role Simulator, Notifications, User Profile */}
+      {/* Right side: API Status, Role Simulator, Notifications, User Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* API Connection Indicator */}
+        <button
+          onClick={handleCheckApi}
+          disabled={isCheckingApi}
+          title={`API Base: ${apiBaseUrl} - Clique para testar conexão`}
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold rounded-lg border transition-all ${
+            isApiConnected
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+              : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+          }`}
+        >
+          <span
+            className={`w-2 h-2 rounded-full shrink-0 ${
+              isApiConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+            }`}
+          />
+          <span className="hidden sm:inline">
+            {isCheckingApi ? 'Testando...' : isApiConnected ? 'API Online' : 'API Local'}
+          </span>
+        </button>
+
         {/* Reset Database Button */}
         <button
           onClick={handleResetData}

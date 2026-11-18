@@ -1,8 +1,171 @@
 import { db } from '../storage/db';
-import type { Restaurant, RestaurantStatus, AdminUser, StoreTheme } from '../types';
+import { api, isMockEnabled } from './api';
+import type { Restaurant, RestaurantStatus, AdminUser, StoreTheme, BackendRestaurantStatus } from '../types';
 import { generateSlug, sanitizeSlug, getStoreAppUrl, getStorePartnerUrl } from '../utils/slugUtils';
 
+const STATUS_TO_BACKEND: Record<string, BackendRestaurantStatus> = {
+  Pendente: 'PENDING',
+  'Em análise': 'PENDING',
+  Aprovado: 'APPROVED',
+  Ativo: 'ACTIVE',
+  Pausado: 'PAUSED',
+  Suspenso: 'SUSPENDED',
+  Reprovado: 'REJECTED',
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  ACTIVE: 'ACTIVE',
+  PAUSED: 'PAUSED',
+  SUSPENDED: 'SUSPENDED',
+  REJECTED: 'REJECTED',
+};
+
+const BACKEND_TO_LEGACY: Record<string, RestaurantStatus> = {
+  PENDING: 'Pendente',
+  APPROVED: 'Aprovado',
+  ACTIVE: 'Ativo',
+  PAUSED: 'Pausado',
+  SUSPENDED: 'Suspenso',
+  REJECTED: 'Reprovado',
+};
+
 export const restaurantService = {
+  /**
+   * GET /api/v1/admin/restaurants?status=PENDING
+   * Lista restaurantes da fila administrativa com filtro por status
+   */
+  async fetchAdminRestaurants(statusFilter?: string): Promise<Restaurant[]> {
+    try {
+      const backendStatus = statusFilter && statusFilter !== 'all' ? STATUS_TO_BACKEND[statusFilter] || statusFilter : undefined;
+      const params = backendStatus ? { status: backendStatus } : undefined;
+      const data = await api.get<any>('/admin/restaurants', params);
+
+      const list = Array.isArray(data) ? data : (data?.items || data?.data);
+      if (Array.isArray(list)) {
+        return list.map((item) => this.normalizeFromApi(item));
+      }
+      if (!isMockEnabled()) {
+        return [];
+      }
+    } catch (err) {
+      if (!isMockEnabled()) {
+        console.warn('Erro ao carregar restaurantes da API central:', err);
+        return [];
+      }
+    }
+
+    const all = db.getRestaurants();
+    if (!statusFilter || statusFilter === 'all') return all;
+    return all.filter((r) => r.status === statusFilter || STATUS_TO_BACKEND[r.status] === statusFilter);
+  },
+
+  /**
+   * GET /api/v1/restaurants/{id}
+   * Detalhes completos do restaurante
+   */
+  async fetchRestaurantById(id: string): Promise<Restaurant | undefined> {
+    try {
+      const data = await api.get<any>(`/restaurants/${id}`);
+      if (data && (data.id || data.name)) {
+        return this.normalizeFromApi(data);
+      }
+    } catch (err) {
+      if (!isMockEnabled()) {
+        console.warn(`Erro ao carregar restaurante ${id} da API central:`, err);
+        return undefined;
+      }
+    }
+    return this.getById(id);
+  },
+
+  /**
+   * PATCH /api/v1/admin/restaurants/{id}/status
+   * Payload: { status: "APPROVED" | "REJECTED" | "SUSPENDED" | "ACTIVE" }
+   */
+  async updateStatusApi(
+    id: string,
+    newStatus: RestaurantStatus,
+    admin: AdminUser,
+    reason?: string
+  ): Promise<Restaurant | undefined> {
+    const backendStatus = STATUS_TO_BACKEND[newStatus] || (newStatus as BackendRestaurantStatus);
+
+    try {
+      await api.patch(`/admin/restaurants/${id}/status`, {
+        status: backendStatus,
+        reason: reason || undefined,
+      });
+    } catch (err) {
+      console.warn('Erro ao atualizar status via API, aplicando fallback local:', err);
+    }
+
+    // Update local DB and audit trail
+    return this.updateStatus(id, newStatus, admin, reason);
+  },
+
+  /**
+   * PATCH /api/v1/admin/restaurants/{id}/commission
+   * Payload: { commission_rate: 0.12 }
+   */
+  async updateCommissionApi(
+    id: string,
+    commissionRate: number,
+    fixedFee: number,
+    admin: AdminUser,
+    justification: string
+  ): Promise<Restaurant | undefined> {
+    try {
+      const rateDecimal = commissionRate > 1 ? commissionRate / 100 : commissionRate;
+      await api.patch(`/admin/restaurants/${id}/commission`, {
+        commission_rate: rateDecimal,
+        fixed_fee: fixedFee,
+        justification,
+      });
+    } catch (err) {
+      console.warn('Erro ao atualizar comissão via API, aplicando fallback local:', err);
+    }
+
+    return this.updateCommission(id, commissionRate, fixedFee, admin, justification);
+  },
+
+  normalizeFromApi(item: any): Restaurant {
+    const slug = item.slug || generateSlug(item.name || 'loja');
+    const rawRate = Number(item.commission_rate ?? item.commissionRate ?? 0.12);
+    const commissionRate = rawRate <= 1 && rawRate > 0 ? Number((rawRate * 100).toFixed(1)) : rawRate;
+
+    return {
+      id: String(item.id),
+      name: item.name || 'Restaurante',
+      slug,
+      appUrl: item.app_url || item.appUrl || getStoreAppUrl(slug),
+      partnerUrl: item.partner_url || item.partnerUrl || getStorePartnerUrl(slug),
+      logo: item.logo || item.logo_url || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80',
+      coverImage: item.cover_image || item.coverImage,
+      category: item.category_name || item.category || 'Restaurantes',
+      categoryId: item.category_id || item.categoryId || 'cat-1',
+      ownerName: item.owner_name || item.ownerName || 'Responsável',
+      phone: item.phone || '(11) 99999-9999',
+      email: item.email || 'contato@restaurante.com.br',
+      city: item.city || 'São Paulo',
+      state: item.state || 'SP',
+      address: item.address || '',
+      zipCode: item.zip_code || item.zipCode || '01000-000',
+      cnpj: item.cnpj || '00.000.000/0001-00',
+      createdAt: item.created_at || item.createdAt || new Date().toISOString(),
+      status: BACKEND_TO_LEGACY[item.status] || item.status || 'Ativo',
+      rating: Number(item.rating ?? 5.0),
+      totalOrders: Number(item.total_orders ?? item.totalOrders ?? 0),
+      totalRevenue: Number(item.total_revenue ?? item.totalRevenue ?? 0),
+      commissionRate,
+      fixedFee: Number(item.fixed_fee ?? item.fixedFee ?? 1.5),
+      minimumOrder: Number(item.minimum_order ?? item.minimumOrder ?? 20.0),
+      deliveryTimeMin: Number(item.delivery_time_min ?? item.deliveryTimeMin ?? 25),
+      deliveryTimeMax: Number(item.delivery_time_max ?? item.deliveryTimeMax ?? 45),
+      deliveryFee: Number(item.delivery_fee ?? item.deliveryFee ?? 5.0),
+      isOpen: item.is_open ?? item.isOpen ?? true,
+      theme: item.theme,
+      history: Array.isArray(item.history) ? item.history : [],
+    };
+  },
   getAll(): Restaurant[] {
     return db.getRestaurants();
   },

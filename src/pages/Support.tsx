@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   LifeBuoy,
   Search,
@@ -11,6 +11,7 @@ import {
   User,
   Shield,
   ArrowRight,
+  CheckCheck,
 } from 'lucide-react';
 import { supportService } from '../services/supportService';
 import { useAuth } from '../context/AuthContext';
@@ -22,9 +23,10 @@ import type { SupportTicket, TicketPriority, TicketStatus, RequesterType } from 
 
 export const SupportPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { success, error } = useToast();
+  const { success, error, info } = useToast();
 
-  const [tickets, setTickets] = useState<SupportTicket[]>(supportService.getAll());
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,10 +41,23 @@ export const SupportPage: React.FC = () => {
   // Active Ticket Drawer / Modal
   const [activeTicket, setActiveTicket] = useState<SupportTicket | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [isSendingReply, setIsSendingReply] = useState(false);
 
-  const refreshList = () => {
-    setTickets(supportService.getAll());
+  const refreshList = async () => {
+    setIsLoading(true);
+    try {
+      const data = await supportService.fetchTickets(statusFilter);
+      setTickets(data);
+    } catch (err) {
+      console.warn('Erro ao carregar tickets:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  useEffect(() => {
+    refreshList();
+  }, [statusFilter]);
 
   const filtered = useMemo(() => {
     return tickets.filter((t) => {
@@ -96,15 +111,34 @@ export const SupportPage: React.FC = () => {
     }
   };
 
-  const handleSendReply = (e: React.FormEvent) => {
+  const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeTicket || !replyText.trim()) return;
 
-    const updated = supportService.addMessage(activeTicket.id, replyText, currentUser);
-    success('Resposta enviada no chamado com sucesso!');
-    setReplyText('');
-    refreshList();
-    if (updated) setActiveTicket(updated);
+    setIsSendingReply(true);
+    try {
+      const updated = await supportService.replyTicket(activeTicket.id, replyText, currentUser);
+      success('Resposta enviada no chamado com sucesso!');
+      setReplyText('');
+      refreshList();
+      if (updated) setActiveTicket(updated);
+    } catch (err: any) {
+      error('Falha ao enviar resposta:', err.message);
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
+
+  const handleCloseTicket = async () => {
+    if (!activeTicket) return;
+    try {
+      const updated = await supportService.closeTicket(activeTicket.id, currentUser);
+      success(`Chamado ${activeTicket.code} encerrado com sucesso.`);
+      refreshList();
+      if (updated) setActiveTicket(updated);
+    } catch (err: any) {
+      error('Falha ao encerrar chamado:', err.message);
+    }
   };
 
   const handleUpdateStatus = (newStatus: TicketStatus) => {
@@ -314,10 +348,24 @@ export const SupportPage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 font-semibold">Prioridade:</span>
-                <Badge variant={getPriorityBadgeVariant(activeTicket.priority)}>
-                  {activeTicket.priority}
-                </Badge>
+                {activeTicket.status !== 'Encerrado' && (
+                  <button
+                    type="button"
+                    onClick={handleCloseTicket}
+                    className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg font-bold text-xs transition-colors flex items-center gap-1.5"
+                    title="Encerrar chamado via API (PATCH /api/v1/support/tickets/{id}/close)"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5 text-red-500" />
+                    <span>Encerrar Chamado</span>
+                  </button>
+                )}
+
+                <div className="flex items-center gap-1.5 ml-1">
+                  <span className="text-slate-500 font-semibold">Prioridade:</span>
+                  <Badge variant={getPriorityBadgeVariant(activeTicket.priority)}>
+                    {activeTicket.priority}
+                  </Badge>
+                </div>
               </div>
             </div>
 
@@ -361,10 +409,11 @@ export const SupportPage: React.FC = () => {
               />
               <button
                 type="submit"
-                className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shrink-0"
+                disabled={isSendingReply}
+                className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shrink-0"
               >
-                <Send className="w-4 h-4" />
-                <span>Responder</span>
+                <Send className={`w-4 h-4 ${isSendingReply ? 'animate-spin' : ''}`} />
+                <span>{isSendingReply ? 'Enviando...' : 'Responder'}</span>
               </button>
             </form>
           </div>

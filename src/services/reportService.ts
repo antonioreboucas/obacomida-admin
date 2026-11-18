@@ -1,5 +1,6 @@
 import { db } from '../storage/db';
-import type { Order } from '../types';
+import { api, isMockEnabled } from './api';
+import type { Order, AdminOverviewKPIs, SalesByCategoryItem, TopRestaurantItem } from '../types';
 
 export interface ReportFilter {
   period: 'today' | 'yesterday' | '7days' | '30days' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -26,6 +27,153 @@ export interface ReportData {
 }
 
 export const reportService = {
+  /**
+   * GET /api/v1/admin/dashboard ou GET /api/v1/reports/admin/overview
+   * Retorna os KPIs globais principais da plataforma
+   */
+  async getOverviewKPIs(): Promise<AdminOverviewKPIs> {
+    try {
+      let data: any = null;
+      try {
+        data = await api.get<any>('/admin/dashboard');
+      } catch {
+        data = await api.get<any>('/reports/admin/overview');
+      }
+
+      if (data) {
+        const totalGmv = Number(
+          data.total_sales ?? data.total_gmv ?? data.gross_revenue ?? data.grossRevenue ?? 0
+        );
+        const platformRevenue = Number(
+          data.platform_revenue ?? data.platformRevenue ?? data.total_commissions ?? 0
+        );
+        const totalOrders = Number(
+          data.total_orders_count ?? data.total_orders ?? data.totalOrders ?? 0
+        );
+        const activeRestaurants = Number(
+          data.active_restaurants_count ?? data.active_restaurants ?? data.activeRestaurants ?? 0
+        );
+        const totalCustomers = Number(
+          data.total_customers ?? data.totalCustomers ?? 0
+        );
+        const averageTicket = Number(
+          data.average_ticket ?? (totalOrders > 0 ? totalGmv / totalOrders : 0)
+        );
+
+        return {
+          total_gmv: totalGmv,
+          platform_revenue: platformRevenue,
+          total_orders: totalOrders,
+          active_restaurants: activeRestaurants,
+          total_customers: totalCustomers,
+          average_ticket: Number(averageTicket.toFixed(2)),
+        };
+      }
+    } catch {
+      if (!isMockEnabled()) {
+        return {
+          total_gmv: 0,
+          platform_revenue: 0,
+          total_orders: 0,
+          active_restaurants: 0,
+          total_customers: 0,
+          average_ticket: 0,
+        };
+      }
+      // Offline fallback computation
+      const restaurants = db.getRestaurants();
+      const customers = db.getCustomers();
+      const orders = db.getOrders();
+      const completed = orders.filter((o) => o.status === 'Entregue');
+      const gmv = completed.reduce((sum, o) => sum + o.totalAmount, 0);
+      const platformRevenue = completed.reduce((sum, o) => {
+        const r = restaurants.find((rest) => rest.id === o.restaurantId);
+        const rate = r ? r.commissionRate : 12;
+        return sum + (o.totalAmount * rate) / 100 + o.serviceFee;
+      }, 0);
+      const avgTicket = completed.length > 0 ? gmv / completed.length : 0;
+
+      return {
+        total_gmv: Number(gmv.toFixed(2)),
+        platform_revenue: Number(platformRevenue.toFixed(2)),
+        total_orders: orders.length,
+        active_restaurants: restaurants.filter((r) => r.status === 'Ativo').length,
+        total_customers: customers.length,
+        average_ticket: Number(avgTicket.toFixed(2)),
+      };
+    }
+
+    return {
+      total_gmv: 0,
+      platform_revenue: 0,
+      total_orders: 0,
+      active_restaurants: 0,
+      total_customers: 0,
+      average_ticket: 0,
+    };
+  },
+
+  /**
+   * GET /api/v1/reports/admin/sales-by-category
+   * Retorna as vendas agregadas por categoria global
+   */
+  async getSalesByCategory(): Promise<SalesByCategoryItem[]> {
+    try {
+      const data = await api.get<any>('/reports/admin/sales-by-category');
+      const list = Array.isArray(data) ? data : (data?.items || data?.data);
+      if (Array.isArray(list)) {
+        return list.map((item) => ({
+          category: item.category || item.category_name || item.name || 'Outros',
+          revenue: Number(item.revenue ?? item.total_sales ?? item.total_amount ?? 0),
+          count: Number(item.count ?? item.orders_count ?? item.orders ?? 0),
+          percentage: item.percentage ? Number(item.percentage) : undefined,
+        }));
+      }
+      if (!isMockEnabled()) {
+        return [];
+      }
+    } catch {
+      if (!isMockEnabled()) {
+        return [];
+      }
+    }
+
+    const report = this.generateReport({ period: '30days' });
+    return report.ordersByCategory.map((c) => ({
+      category: c.category,
+      revenue: c.revenue,
+      count: c.count,
+    }));
+  },
+
+  /**
+   * GET /api/v1/reports/admin/top-restaurants
+   * Retorna o ranking de estabelecimentos com maior faturamento
+   */
+  async getTopRestaurants(): Promise<TopRestaurantItem[]> {
+    try {
+      const data = await api.get<any>('/reports/admin/top-restaurants');
+      const list = Array.isArray(data) ? data : (data?.items || data?.data);
+      if (Array.isArray(list)) {
+        return list.map((item) => ({
+          id: item.id || item.restaurant_id || `rest-${Math.random()}`,
+          name: item.name || item.restaurant_name || 'Restaurante',
+          orders: Number(item.orders ?? item.total_orders ?? 0),
+          revenue: Number(item.revenue ?? item.total_revenue ?? 0),
+        }));
+      }
+      if (!isMockEnabled()) {
+        return [];
+      }
+    } catch {
+      if (!isMockEnabled()) {
+        return [];
+      }
+    }
+
+    const report = this.generateReport({ period: '30days' });
+    return report.topRestaurants;
+  },
   filterOrders(filter: ReportFilter): Order[] {
     const orders = db.getOrders();
     const now = new Date(2026, 10, 16, 23, 59, 59);

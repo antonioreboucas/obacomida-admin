@@ -30,7 +30,8 @@ export const Customers: React.FC<CustomersProps> = ({ onViewOrder }) => {
   const { currentUser } = useAuth();
   const { success } = useToast();
 
-  const [customers, setCustomers] = useState<Customer[]>(customerService.getAll());
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -48,9 +49,21 @@ export const Customers: React.FC<CustomersProps> = ({ onViewOrder }) => {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editFormData, setEditFormData] = useState({ name: '', email: '', phone: '' });
 
-  const refreshList = () => {
-    setCustomers(customerService.getAll());
-  };
+  const refreshList = React.useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await customerService.fetchCustomers(searchTerm);
+      setCustomers(data);
+    } catch (err) {
+      console.warn('Erro ao carregar clientes:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchTerm]);
+
+  React.useEffect(() => {
+    refreshList();
+  }, [refreshList]);
 
   const filtered = useMemo(() => {
     return customers.filter((c) => {

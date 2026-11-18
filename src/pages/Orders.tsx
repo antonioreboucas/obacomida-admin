@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   ShoppingBag,
   Search,
@@ -10,14 +10,16 @@ import {
   RotateCcw,
   SlidersHorizontal,
   XCircle,
+  Loader2,
 } from 'lucide-react';
 import { orderService } from '../services/orderService';
 import { restaurantService } from '../services/restaurantService';
+import { isMockEnabled } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Badge, type BadgeVariant } from '../components/common/Badge';
 import { Pagination } from '../components/common/Pagination';
-import type { Order, OrderStatus, PaymentMethod } from '../types';
+import type { Order, OrderStatus, PaymentMethod, Restaurant } from '../types';
 
 interface OrdersProps {
   onViewOrder: (orderId: string) => void;
@@ -27,8 +29,9 @@ export const Orders: React.FC<OrdersProps> = ({ onViewOrder }) => {
   const { currentUser } = useAuth();
   const { success } = useToast();
 
-  const [orders, setOrders] = useState<Order[]>(orderService.getAll());
-  const restaurants = restaurantService.getAll();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,6 +40,33 @@ export const Orders: React.FC<OrdersProps> = ({ onViewOrder }) => {
   const [cityFilter, setCityFilter] = useState<string>('all');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [orderData, restData] = await Promise.all([
+        orderService.fetchAdminOrders({
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+          restaurant_id: restaurantFilter !== 'all' ? restaurantFilter : undefined,
+        }),
+        restaurantService.fetchAdminRestaurants(),
+      ]);
+      setOrders(orderData);
+      setRestaurants(restData);
+    } catch (err) {
+      console.warn('Erro ao carregar pedidos:', err);
+      if (isMockEnabled()) {
+        setOrders(orderService.getAll());
+        setRestaurants(restaurantService.getAll());
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [statusFilter, restaurantFilter]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -272,74 +302,81 @@ export const Orders: React.FC<OrdersProps> = ({ onViewOrder }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-              {paginatedOrders.map((o) => (
-                <tr key={o.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-3.5 px-4 font-bold text-orange-600">
-                    <button
-                      onClick={() => onViewOrder(o.id)}
-                      className="hover:underline font-mono"
-                    >
-                      {o.code}
-                    </button>
-                    {o.occurrences.length > 0 && (
-                      <span className="block text-[10px] text-amber-600 font-bold mt-0.5">
-                        ⚠️ {o.occurrences.length} ocorrência(s)
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="py-3.5 px-4">
-                    <p className="font-semibold text-slate-900">{o.customerName}</p>
-                    <p className="text-[10px] text-slate-400">{o.city}</p>
-                  </td>
-
-                  <td className="py-3.5 px-4">
-                    <p className="font-semibold text-slate-800">{o.restaurantName}</p>
-                    <p className="text-[10px] text-slate-400">{o.items.length} item(ns)</p>
-                  </td>
-
-                  <td className="py-3.5 px-4 text-slate-500 whitespace-nowrap">
-                    {new Date(o.createdAt).toLocaleString('pt-BR')}
-                  </td>
-
-                  <td className="py-3.5 px-4 font-bold text-slate-900 whitespace-nowrap">
-                    R$ {o.totalAmount.toFixed(2)}
-                  </td>
-
-                  <td className="py-3.5 px-4 text-slate-600">
-                    <span className="bg-slate-100 px-2 py-0.5 rounded-md text-[11px] font-medium">
-                      {o.paymentMethod}
-                    </span>
-                  </td>
-
-                  <td className="py-3.5 px-4 text-slate-600">
-                    <span className="text-[11px] font-medium">{o.deliveryType}</span>
-                  </td>
-
-                  <td className="py-3.5 px-4">
-                    <Badge variant={getStatusBadgeVariant(o.status)} dot>
-                      {o.status}
-                    </Badge>
-                  </td>
-
-                  <td className="py-3.5 px-4 text-right">
-                    <button
-                      onClick={() => onViewOrder(o.id)}
-                      className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                      title="Ver detalhes completos"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={9} className="py-12 text-center text-slate-500">
+                    <Loader2 className="w-6 h-6 animate-spin text-orange-600 mx-auto mb-2" />
+                    <span>Carregando pedidos da API (/admin/orders)...</span>
                   </td>
                 </tr>
-              ))}
-
-              {paginatedOrders.length === 0 && (
+              ) : paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-slate-400">
                     Nenhum pedido encontrado para os filtros selecionados.
                   </td>
                 </tr>
+              ) : (
+                paginatedOrders.map((o) => (
+                  <tr key={o.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-3.5 px-4 font-bold text-orange-600">
+                      <button
+                        onClick={() => onViewOrder(o.id)}
+                        className="hover:underline font-mono"
+                      >
+                        {o.code}
+                      </button>
+                      {o.occurrences.length > 0 && (
+                        <span className="block text-[10px] text-amber-600 font-bold mt-0.5">
+                          ⚠️ {o.occurrences.length} ocorrência(s)
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      <p className="font-semibold text-slate-900">{o.customerName}</p>
+                      <p className="text-[10px] text-slate-400">{o.city}</p>
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      <p className="font-semibold text-slate-800">{o.restaurantName}</p>
+                      <p className="text-[10px] text-slate-400">{o.items.length} item(ns)</p>
+                    </td>
+
+                    <td className="py-3.5 px-4 text-slate-500 whitespace-nowrap">
+                      {new Date(o.createdAt).toLocaleString('pt-BR')}
+                    </td>
+
+                    <td className="py-3.5 px-4 font-bold text-slate-900 whitespace-nowrap">
+                      R$ {o.totalAmount.toFixed(2)}
+                    </td>
+
+                    <td className="py-3.5 px-4 text-slate-600">
+                      <span className="bg-slate-100 px-2 py-0.5 rounded-md text-[11px] font-medium">
+                        {o.paymentMethod}
+                      </span>
+                    </td>
+
+                    <td className="py-3.5 px-4 text-slate-600">
+                      <span className="text-[11px] font-medium">{o.deliveryType}</span>
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      <Badge variant={getStatusBadgeVariant(o.status)} dot>
+                        {o.status}
+                      </Badge>
+                    </td>
+
+                    <td className="py-3.5 px-4 text-right">
+                      <button
+                        onClick={() => onViewOrder(o.id)}
+                        className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                        title="Ver detalhes completos"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

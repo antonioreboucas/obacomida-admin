@@ -1,21 +1,20 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  History,
   Search,
-  Filter,
-  User,
-  Clock,
-  Layers,
-  ChevronDown,
-  RotateCcw,
+  FileCode,
+  ShieldAlert,
 } from 'lucide-react';
 import { auditService } from '../services/auditService';
-import { Badge } from '../components/common/Badge';
+import { Modal } from '../components/common/Modal';
 import { Pagination } from '../components/common/Pagination';
 import type { AuditLog } from '../types';
 
 export const AuditPage: React.FC = () => {
-  const [logs, setLogs] = useState<AuditLog[]>(auditService.getAll());
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [totalLogs, setTotalLogs] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [moduleFilter, setModuleFilter] = useState<string>('all');
 
@@ -23,24 +22,32 @@ export const AuditPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(15);
 
-  const filtered = useMemo(() => {
-    return logs.filter((log) => {
-      const matchSearch =
-        log.adminName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.entityId.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchModule = moduleFilter === 'all' || log.module === moduleFilter;
-      return matchSearch && matchModule;
-    });
-  }, [logs, searchTerm, moduleFilter]);
+  // Selected Log for JSON Diff Inspection (Checklist Item 6)
+  const [selectedDiffLog, setSelectedDiffLog] = useState<AuditLog | null>(null);
 
-  const paginated = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filtered.slice(start, start + itemsPerPage);
-  }, [filtered, currentPage, itemsPerPage]);
+  const refreshList = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await auditService.fetchAuditLogs({
+        action: searchTerm || undefined,
+        entity_name: moduleFilter !== 'all' ? moduleFilter : undefined,
+        page: currentPage,
+        page_size: itemsPerPage,
+      });
+      setLogs(res.items);
+      setTotalLogs(res.total);
+    } catch (err) {
+      console.warn('Erro ao buscar logs de auditoria:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchTerm, moduleFilter, currentPage, itemsPerPage]);
 
-  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  useEffect(() => {
+    refreshList();
+  }, [refreshList]);
+
+  const totalPages = Math.ceil(totalLogs / itemsPerPage);
 
   const modules = [
     'Restaurantes',
@@ -54,6 +61,17 @@ export const AuditPage: React.FC = () => {
     'Autenticação',
   ];
 
+  // Helper to format JSON safely
+  const formatJson = (val?: string) => {
+    if (!val) return null;
+    try {
+      const parsed = JSON.parse(val);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return val;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header bar */}
@@ -61,14 +79,14 @@ export const AuditPage: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-              Trilha de Auditoria Administrativa
+              Trilha de Auditoria Administrativa & Segurança
             </h1>
-            <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
-              {logs.length} registros imutáveis
+            <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 font-mono">
+              GET /api/v1/admin/audit-logs
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Rastreabilidade completa de todas as alterações críticas, intervenções operacionais e aprovações no sistema.
+            Rastreabilidade imutável de todas as ações administrativas críticas, alteração de comissões, intervenções em pedidos e IP de origem.
           </p>
         </div>
       </div>
@@ -112,26 +130,33 @@ export const AuditPage: React.FC = () => {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-100">
               <tr>
-                <th className="py-3 px-4">Data e Hora</th>
+                <th className="py-3 px-4">Data / Hora</th>
+                <th className="py-3 px-4">IP Origem</th>
                 <th className="py-3 px-4">Responsável</th>
                 <th className="py-3 px-4">Perfil</th>
                 <th className="py-3 px-4">Módulo</th>
                 <th className="py-3 px-4">Ação Executada</th>
-                <th className="py-3 px-4">Entidade</th>
-                <th className="py-3 px-4">Detalhes da Alteração</th>
+                <th className="py-3 px-4">Entidade ID</th>
+                <th className="py-3 px-4 text-right">JSON Diff / Detalhes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-              {paginated.map((log) => (
+              {logs.map((log) => (
                 <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-3 px-4 text-slate-500 whitespace-nowrap font-mono text-[11px]">
                     {new Date(log.timestamp).toLocaleString('pt-BR')}
                   </td>
 
+                  <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
+                    <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">
+                      {log.ip_address || '127.0.0.1'}
+                    </span>
+                  </td>
+
                   <td className="py-3 px-4 font-bold text-slate-900">{log.adminName}</td>
 
                   <td className="py-3 px-4">
-                    <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase">
+                    <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase">
                       {log.adminRole}
                     </span>
                   </td>
@@ -140,31 +165,34 @@ export const AuditPage: React.FC = () => {
 
                   <td className="py-3 px-4 font-bold text-slate-800">{log.action}</td>
 
-                  <td className="py-3 px-4 font-mono text-[11px] text-slate-500">{log.entityId}</td>
+                  <td className="py-3 px-4 font-mono text-[11px] text-slate-500 truncate max-w-[120px]">
+                    {log.entityId}
+                  </td>
 
-                  <td className="py-3 px-4 text-slate-600 max-w-md">
-                    <p>{log.details}</p>
-                    {(log.previousValue || log.currentValue) && (
-                      <div className="mt-1 text-[10px] bg-slate-50 p-1.5 rounded-lg border border-slate-200 space-y-0.5 font-mono">
-                        {log.previousValue && (
-                          <div className="text-rose-600 truncate">
-                            <span className="font-bold">Anterior:</span> {log.previousValue}
-                          </div>
-                        )}
-                        {log.currentValue && (
-                          <div className="text-emerald-700 truncate">
-                            <span className="font-bold">Atual:</span> {log.currentValue}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                  <td className="py-3 px-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {(log.previousValue || log.currentValue || log.changes) ? (
+                        <button
+                          onClick={() => setSelectedDiffLog(log)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg transition-colors"
+                          title="Inspecionar JSON Diff das alterações"
+                        >
+                          <FileCode className="w-3.5 h-3.5" />
+                          <span>Ver Diff</span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 truncate max-w-[140px]">
+                          {log.details}
+                        </span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
 
-              {paginated.length === 0 && (
+              {logs.length === 0 && !isLoading && (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     Nenhum registro de auditoria encontrado.
                   </td>
                 </tr>
@@ -176,7 +204,7 @@ export const AuditPage: React.FC = () => {
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
-          totalItems={filtered.length}
+          totalItems={totalLogs}
           itemsPerPage={itemsPerPage}
           onPageChange={setCurrentPage}
           onItemsPerPageChange={(val) => {
@@ -185,6 +213,78 @@ export const AuditPage: React.FC = () => {
           }}
         />
       </div>
+
+      {/* JSON Diff Viewer Modal (Checklist Item 6) */}
+      <Modal
+        isOpen={!!selectedDiffLog}
+        onClose={() => setSelectedDiffLog(null)}
+        title="Histórico de Auditoria: JSON Diff das Alterações"
+        subtitle={`Registro #${selectedDiffLog?.id} • Ação: ${selectedDiffLog?.action}`}
+        maxWidth="4xl"
+      >
+        {selectedDiffLog && (
+          <div className="space-y-4">
+            {/* Metadata Bar */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div>
+                <span className="text-slate-400 block text-[10px] font-bold">OPERADOR</span>
+                <span className="font-bold text-slate-900">{selectedDiffLog.adminName}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-bold">PERFIL</span>
+                <span className="font-mono text-purple-700 font-bold uppercase">{selectedDiffLog.adminRole}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-bold">IP DE ORIGEM</span>
+                <span className="font-mono text-slate-700">{selectedDiffLog.ip_address || '127.0.0.1'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-bold">DATA / HORA</span>
+                <span className="font-mono text-slate-700">{new Date(selectedDiffLog.timestamp).toLocaleString('pt-BR')}</span>
+              </div>
+            </div>
+
+            <div className="text-xs text-slate-600 bg-white p-2 border border-slate-200 rounded-xl">
+              <strong>Descrição da Ação:</strong> {selectedDiffLog.details}
+            </div>
+
+            {/* Side-by-Side JSON Diff */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Before / Anterior */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-rose-700 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200">
+                  <span>Estado Anterior (Before)</span>
+                  <span className="text-[10px] font-mono">old_value</span>
+                </div>
+                <pre className="p-3 bg-slate-950 text-rose-400 rounded-xl text-[11px] font-mono overflow-x-auto max-h-80 border border-slate-800">
+                  {formatJson(selectedDiffLog.previousValue) || '// Nenhum estado anterior registrado (registro inicial)'}
+                </pre>
+              </div>
+
+              {/* After / Atual */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                  <span>Estado Novo (After)</span>
+                  <span className="text-[10px] font-mono">new_value</span>
+                </div>
+                <pre className="p-3 bg-slate-950 text-emerald-400 rounded-xl text-[11px] font-mono overflow-x-auto max-h-80 border border-slate-800">
+                  {formatJson(selectedDiffLog.currentValue) || '// Nenhum valor novo registrado'}
+                </pre>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSelectedDiffLog(null)}
+                className="px-4 py-2 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-xl transition-colors"
+              >
+                Fechar Visualizador de Diff
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

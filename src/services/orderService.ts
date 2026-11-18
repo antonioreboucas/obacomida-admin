@@ -1,7 +1,50 @@
 import { db } from '../storage/db';
+import { api, isMockEnabled } from './api';
 import type { Order, OrderStatus, AdminUser } from '../types';
 
 export const orderService = {
+  /**
+   * GET /api/v1/admin/orders?status=&restaurant_id=&start_date=&end_date=
+   * Lista todos os pedidos da plataforma com filtros
+   */
+  async fetchAdminOrders(filters?: {
+    status?: string;
+    restaurant_id?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<Order[]> {
+    try {
+      const params: Record<string, any> = {};
+      if (filters?.status && filters.status !== 'all') params.status = filters.status;
+      if (filters?.restaurant_id && filters.restaurant_id !== 'all') params.restaurant_id = filters.restaurant_id;
+      if (filters?.start_date) params.start_date = filters.start_date;
+      if (filters?.end_date) params.end_date = filters.end_date;
+
+      const data = await api.get<any>('/admin/orders', params);
+      const list = Array.isArray(data) ? data : (data?.items || data?.data);
+      if (Array.isArray(list)) {
+        return list.map((item) => this.normalizeFromApi(item));
+      }
+      if (!isMockEnabled()) {
+        return [];
+      }
+    } catch (err) {
+      if (!isMockEnabled()) {
+        console.warn('Erro ao carregar pedidos da API central:', err);
+        return [];
+      }
+    }
+
+    const all = db.getOrders();
+    return all.filter((o) => {
+      if (filters?.status && filters.status !== 'all' && o.status !== filters.status) return false;
+      if (filters?.restaurant_id && filters.restaurant_id !== 'all' && o.restaurantId !== filters.restaurant_id) return false;
+      if (filters?.start_date && new Date(o.createdAt) < new Date(filters.start_date)) return false;
+      if (filters?.end_date && new Date(o.createdAt) > new Date(filters.end_date)) return false;
+      return true;
+    });
+  },
+
   getAll(): Order[] {
     return db.getOrders();
   },
@@ -46,11 +89,11 @@ export const orderService = {
     db.logAudit({
       adminId: admin.id,
       adminName: admin.name,
-      adminRole: admin.role,
+      adminRole: String(admin.role),
       action: 'Intervenção no status do pedido',
       module: 'Pedidos',
       entityId: order.code,
-      details: `Pedido ${order.code} alterado de "${order.status}" para "${newStatus}". ${note || ''}`,
+      details: `Pedido ${order.code} alterado de "${order.status}" para "${newStatus}". Justificativa: ${note || 'Intervenção operacional'}`,
       previousValue: order.status,
       currentValue: newStatus,
     });
@@ -60,13 +103,27 @@ export const orderService = {
 
   addOccurrence(
     id: string,
-    type: string,
-    description: string,
-    admin: AdminUser
+    typeOrObj: string | { type: string; description: string },
+    descriptionOrAdmin: string | AdminUser,
+    adminUser?: AdminUser
   ): Order | undefined {
     const orders = db.getOrders();
     const order = orders.find((o) => o.id === id);
     if (!order) return undefined;
+
+    let type = '';
+    let description = '';
+    let admin: AdminUser;
+
+    if (typeof typeOrObj === 'object') {
+      type = typeOrObj.type;
+      description = typeOrObj.description;
+      admin = descriptionOrAdmin as AdminUser;
+    } else {
+      type = typeOrObj;
+      description = descriptionOrAdmin as string;
+      admin = adminUser!;
+    }
 
     const newOccurrence = {
       id: `occ-${Date.now()}`,
@@ -86,7 +143,7 @@ export const orderService = {
     db.logAudit({
       adminId: admin.id,
       adminName: admin.name,
-      adminRole: admin.role,
+      adminRole: String(admin.role),
       action: 'Registro de ocorrência no pedido',
       module: 'Pedidos',
       entityId: order.code,
@@ -116,7 +173,7 @@ export const orderService = {
     db.logAudit({
       adminId: admin.id,
       adminName: admin.name,
-      adminRole: admin.role,
+      adminRole: String(admin.role),
       action: 'Resolução de ocorrência',
       module: 'Pedidos',
       entityId: order.code,
@@ -128,5 +185,42 @@ export const orderService = {
 
   cancelOrder(id: string, reason: string, admin: AdminUser): Order | undefined {
     return this.updateStatus(id, 'Cancelado', admin, `Cancelamento administrativo: ${reason}`);
+  },
+
+  normalizeFromApi(item: any): Order {
+    return {
+      id: String(item.id),
+      code: item.code || `#OBA-${String(item.id).slice(-4)}`,
+      customerId: item.customer_id || item.customerId || 'cust-1',
+      customerName: item.customer_name || item.customerName || 'Cliente',
+      customerPhone: item.customer_phone || item.customerPhone || '(11) 99999-9999',
+      restaurantId: item.restaurant_id || item.restaurantId || 'rest-1',
+      restaurantName: item.restaurant_name || item.restaurantName || 'Restaurante',
+      items: Array.isArray(item.items)
+        ? item.items.map((i: any) => ({
+            id: String(i.id || Math.random()),
+            productId: i.product_id || i.productId || '',
+            productName: i.product_name || i.productName || 'Item',
+            quantity: Number(i.quantity ?? 1),
+            unitPrice: Number(i.unit_price ?? i.unitPrice ?? 0),
+            totalPrice: Number(i.total_price ?? i.totalPrice ?? 0),
+            notes: i.notes,
+          }))
+        : [],
+      subtotal: Number(item.subtotal ?? 0),
+      deliveryFee: Number(item.delivery_fee ?? item.deliveryFee ?? 0),
+      serviceFee: Number(item.service_fee ?? item.serviceFee ?? 0),
+      discount: Number(item.discount ?? 0),
+      totalAmount: Number(item.total_amount ?? item.totalAmount ?? 0),
+      paymentMethod: item.payment_method || item.paymentMethod || 'Pix',
+      status: item.status || 'Criado',
+      deliveryType: item.delivery_type || item.deliveryType || 'Entrega',
+      deliveryAddress: item.delivery_address || item.deliveryAddress || '',
+      city: item.city || 'São Paulo',
+      createdAt: item.created_at || item.createdAt || new Date().toISOString(),
+      estimatedDeliveryTime: item.estimated_delivery_time || item.estimatedDeliveryTime,
+      statusHistory: Array.isArray(item.status_history) ? item.status_history : [],
+      occurrences: Array.isArray(item.occurrences) ? item.occurrences : [],
+    };
   },
 };
