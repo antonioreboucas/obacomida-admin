@@ -195,9 +195,12 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <button
-            onClick={logout}
+            onClick={() => {
+              logout();
+              info('Sessão encerrada', 'Você saiu do painel administrativo.');
+            }}
             title="Sair do painel"
-            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1"
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1 cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
           </button>

@@ -16,6 +16,7 @@ import {
   Settings,
   ChevronRight,
   Flame,
+  LogOut,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../storage/db';
@@ -49,7 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile,
 }) => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, currentUser, logout } = useAuth();
 
   // Badges calculation
   const restaurants = db.getRestaurants();
@@ -192,14 +193,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ))}
         </div>
 
-        {/* System status pill in footer */}
-        <div className="p-4 border-t border-slate-800/80 bg-slate-950/30">
-          <div className="flex items-center justify-between text-xs text-slate-400">
+        {/* System status & User footer */}
+        <div className="p-3 border-t border-slate-800/80 bg-slate-950/40 space-y-2.5">
+          <div className="flex items-center justify-between px-1 text-xs text-slate-400">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[11px] font-medium text-slate-300">Marketplace Online</span>
             </div>
             <span className="text-[10px] text-slate-400">MVP v1.0</span>
+          </div>
+
+          <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/50 border border-slate-800">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img
+                src={currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
+                alt={currentUser.name}
+                className="w-7 h-7 rounded-lg object-cover ring-1 ring-orange-500/30 shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-white truncate leading-tight">{currentUser.name}</p>
+                <p className="text-[10px] text-slate-400 truncate leading-tight capitalize">{currentUser.role}</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={logout}
+              title="Sair do painel administrativo"
+              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/30 rounded-lg transition-colors cursor-pointer shrink-0"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </aside>

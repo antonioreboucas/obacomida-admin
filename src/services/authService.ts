@@ -1,7 +1,14 @@
 import { db } from '../storage/db';
 import type { AdminUser, AdminRole } from '../types';
 
+const SESSION_KEY = 'obacomida_auth_session';
+
 export const authService = {
+  isAuthenticated(): boolean {
+    if (typeof window === 'undefined') return false;
+    return !!(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY));
+  },
+
   getCurrentUser(): AdminUser {
     return db.getActiveUser();
   },
@@ -19,19 +26,39 @@ export const authService = {
     });
   },
 
-  login(email: string, _password: string): Promise<{ success: boolean; user?: AdminUser; error?: string }> {
+  login(
+    email: string,
+    password?: string,
+    rememberMe: boolean = true
+  ): Promise<{ success: boolean; user?: AdminUser; error?: string }> {
     return new Promise((resolve) => {
       setTimeout(() => {
+        const cleanEmail = (email || '').trim().toLowerCase();
         const users = db.getAdminUsers();
-        const found = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+        const found = users.find((u) => u.email.toLowerCase() === cleanEmail);
 
         if (!found) {
-          resolve({ success: false, error: 'E-mail ou senha incorretos' });
+          resolve({
+            success: false,
+            error: 'E-mail administrativo não encontrado na base corporativa.',
+          });
           return;
         }
 
         if (found.status === 'Inativo') {
-          resolve({ success: false, error: 'Usuário administrativo inativo ou suspenso' });
+          resolve({
+            success: false,
+            error: 'Acesso bloqueado: este usuário administrativo está inativo ou suspenso.',
+          });
+          return;
+        }
+
+        // Demo password validation: minimum 4 chars, default demo is 'admin123'
+        if (password !== undefined && password.trim().length > 0 && password.trim().length < 4) {
+          resolve({
+            success: false,
+            error: 'Senha inválida. Digite ao menos 4 caracteres (padrão de demonstração: admin123).',
+          });
           return;
         }
 
@@ -40,6 +67,23 @@ export const authService = {
         db.saveAdminUsers(users.map((u) => (u.id === found.id ? updatedUser : u)));
         db.setActiveUser(updatedUser);
 
+        // Store session
+        const sessionData = JSON.stringify({
+          userId: updatedUser.id,
+          email: updatedUser.email,
+          role: updatedUser.role,
+          name: updatedUser.name,
+          loginTime: new Date().toISOString(),
+        });
+
+        if (typeof window !== 'undefined') {
+          if (rememberMe) {
+            localStorage.setItem(SESSION_KEY, sessionData);
+          } else {
+            sessionStorage.setItem(SESSION_KEY, sessionData);
+          }
+        }
+
         db.logAudit({
           adminId: updatedUser.id,
           adminName: updatedUser.name,
@@ -47,11 +91,28 @@ export const authService = {
           action: 'Login administrativo efetuado',
           module: 'Autenticação',
           entityId: updatedUser.id,
-          details: `Acesso autenticado para ${updatedUser.email}`,
+          details: `Acesso autenticado com sucesso para ${updatedUser.email} (${updatedUser.role.toUpperCase()})`,
         });
 
         resolve({ success: true, user: updatedUser });
       }, 350);
+    });
+  },
+
+  logout(): void {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+    const current = db.getActiveUser();
+    db.logAudit({
+      adminId: current.id,
+      adminName: current.name,
+      adminRole: current.role,
+      action: 'Logout administrativo efetuado',
+      module: 'Autenticação',
+      entityId: current.id,
+      details: `Sessão encerrada para ${current.email}`,
     });
   },
 

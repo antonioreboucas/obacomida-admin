@@ -7,7 +7,7 @@ import { db } from '../storage/db';
 interface AuthContextType {
   currentUser: AdminUser;
   isLoggedIn: boolean;
-  login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, pass?: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   switchUser: (userId: string) => void;
   switchRole: (role: AdminRole) => void;
@@ -19,7 +19,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<AdminUser>(authService.getCurrentUser());
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => authService.isAuthenticated());
   const [availableStaff, setAvailableStaff] = useState<AdminUser[]>(adminService.getAll());
 
   useEffect(() => {
@@ -30,8 +30,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return unsubscribe;
   }, []);
 
-  const login = useCallback(async (email: string, pass: string) => {
-    const res = await authService.login(email, pass);
+  const login = useCallback(async (email: string, pass?: string, rememberMe: boolean = true) => {
+    const res = await authService.login(email, pass, rememberMe);
     if (res.success && res.user) {
       setCurrentUser(res.user);
       setIsLoggedIn(true);
@@ -41,6 +41,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const logout = useCallback(() => {
+    authService.logout();
     setIsLoggedIn(false);
   }, []);
 
