@@ -41,6 +41,15 @@ class ApiClient {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(STORAGE_KEYS.API_URL);
       if (stored) return stored;
+
+      // In production environment (e.g. Vercel), default to Railway API
+      if (
+        window.location.hostname &&
+        window.location.hostname !== 'localhost' &&
+        window.location.hostname !== '127.0.0.1'
+      ) {
+        return 'https://web-oba-api.up.railway.app/api/v1';
+      }
     }
     return DEFAULT_API_URL;
   }
@@ -184,8 +193,43 @@ class ApiClient {
         body: isFormData ? body : body ? JSON.stringify(body) : undefined,
       });
 
-      // Handle 401 Unauthorized with token refresh rotation
+      // Parse body first so error details and data are accessible
+      const contentType = response.headers.get('content-type') || '';
+      let data: any = null;
+
+      if (response.status !== 204) {
+        if (contentType.includes('application/json')) {
+          try {
+            data = await response.json();
+          } catch {
+            data = null;
+          }
+        } else {
+          try {
+            data = await response.text();
+          } catch {
+            data = null;
+          }
+        }
+      }
+
+      // Handle 401 Unauthorized
       if (response.status === 401) {
+        const isAuthEndpoint =
+          endpoint.includes('/auth/login') ||
+          endpoint.includes('/auth/register') ||
+          endpoint.includes('/auth/forgot-password');
+
+        if (isAuthEndpoint) {
+          const errorMsg =
+            data?.error?.message ||
+            data?.detail ||
+            data?.message ||
+            'E-mail ou senha incorretos.';
+          throw new ApiError(errorMsg, 401, data);
+        }
+
+        // Token refresh rotation for protected endpoints
         const refreshToken = this.getRefreshToken();
         if (refreshToken && !isRefreshAttempt && !endpoint.includes('/auth/refresh')) {
           try {
@@ -195,11 +239,18 @@ class ApiClient {
               isRefreshAttempt: true,
             });
 
-            const newAccessToken = refreshRes?.access_token || refreshRes?.token;
+            const newAccessToken =
+              refreshRes?.data?.access_token ||
+              refreshRes?.access_token ||
+              refreshRes?.token;
+
             if (newAccessToken) {
               this.setToken(newAccessToken);
-              if (refreshRes.refresh_token) {
-                this.setRefreshToken(refreshRes.refresh_token);
+              const newRefreshToken =
+                refreshRes?.data?.refresh_token ||
+                refreshRes?.refresh_token;
+              if (newRefreshToken) {
+                this.setRefreshToken(newRefreshToken);
               }
               const retryHeaders = { ...headers, Authorization: `Bearer ${newAccessToken}` };
               return await this.request<T>(endpoint, {
@@ -217,26 +268,23 @@ class ApiClient {
         if (this.onUnauthorizedCallback) {
           this.onUnauthorizedCallback();
         }
-        throw new ApiError('Sessão expirada ou não autorizada. Faça login novamente.', 401);
+        const errorMsg =
+          data?.error?.message ||
+          data?.detail ||
+          data?.message ||
+          'Sessão expirada ou não autorizada. Faça login novamente.';
+        throw new ApiError(errorMsg, 401, data);
       }
 
-      // Check if response is empty
+      // Check if response is empty (204)
       if (response.status === 204) {
         this.isOnline = true;
         return {} as T;
       }
 
-      const contentType = response.headers.get('content-type') || '';
-      let data: any = null;
-
-      if (contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        data = await response.text();
-      }
-
       if (!response.ok) {
         const errorDetail =
+          data?.error?.message ||
           data?.detail ||
           data?.message ||
           (typeof data === 'string' ? data : `Erro ${response.status}: ${response.statusText}`);
@@ -244,6 +292,12 @@ class ApiClient {
       }
 
       this.isOnline = true;
+
+      // Automatically unwrap FastAPI standard envelope: { success: true, data: ..., message: "..." }
+      if (data && typeof data === 'object' && data.success === true && data.data !== undefined) {
+        return data.data as T;
+      }
+
       return data as T;
     } catch (err: any) {
       if (err instanceof ApiError) {

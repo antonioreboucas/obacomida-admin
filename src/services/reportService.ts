@@ -41,23 +41,24 @@ export const reportService = {
       }
 
       if (data) {
+        const payload = (data && data.data !== undefined) ? data.data : data;
         const totalGmv = Number(
-          data.total_sales ?? data.total_gmv ?? data.gross_revenue ?? data.grossRevenue ?? 0
+          payload.total_sales ?? payload.total_gmv ?? payload.gross_revenue ?? payload.grossRevenue ?? 0
         );
         const platformRevenue = Number(
-          data.platform_revenue ?? data.platformRevenue ?? data.total_commissions ?? 0
+          payload.platform_revenue ?? payload.platformRevenue ?? payload.total_commissions ?? 0
         );
         const totalOrders = Number(
-          data.total_orders_count ?? data.total_orders ?? data.totalOrders ?? 0
+          payload.total_orders_count ?? payload.total_orders ?? payload.totalOrders ?? 0
         );
         const activeRestaurants = Number(
-          data.active_restaurants_count ?? data.active_restaurants ?? data.activeRestaurants ?? 0
+          payload.active_restaurants_count ?? payload.active_restaurants ?? payload.activeRestaurants ?? 0
         );
         const totalCustomers = Number(
-          data.total_customers ?? data.totalCustomers ?? 0
+          payload.total_customers ?? payload.totalCustomers ?? 0
         );
         const averageTicket = Number(
-          data.average_ticket ?? (totalOrders > 0 ? totalGmv / totalOrders : 0)
+          payload.average_ticket ?? (totalOrders > 0 ? totalGmv / totalOrders : 0)
         );
 
         return {

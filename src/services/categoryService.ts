@@ -9,8 +9,19 @@ export const categoryService = {
    */
   async fetchGlobal(): Promise<Category[]> {
     try {
-      const data = await api.get<any>('/categories/global');
-      const list = Array.isArray(data) ? data : (data?.items || data?.data);
+      let data: any = null;
+      try {
+        data = await api.get<any>('/categories/global');
+      } catch (catErr: any) {
+        if (catErr?.status === 404 || catErr?.status === 403) {
+          data = await api.get<any>('/categories');
+        } else {
+          throw catErr;
+        }
+      }
+
+      const rawList = Array.isArray(data) ? data : (data?.items || data?.data);
+      const list = Array.isArray(rawList) ? rawList : (rawList?.items || []);
       if (Array.isArray(list)) {
         const mapped = list.map((item, index) => this.normalizeFromApi(item, index));
         // Keep in sync with local storage

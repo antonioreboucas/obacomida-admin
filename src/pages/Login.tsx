@@ -81,7 +81,9 @@ export const LoginPage: React.FC = () => {
     if (res.success) {
       success(`Autenticado como ${seedRole}`, `E-mail: ${seedEmail}`);
     } else {
-      setErrorMessage(res.error || 'Falha ao autenticar com credenciais seed.');
+      const err = res.error || 'Falha ao autenticar com credenciais seed.';
+      setErrorMessage(err);
+      error('Falha no login', err);
     }
   };
 
@@ -97,7 +99,12 @@ export const LoginPage: React.FC = () => {
       if (res.success) {
         success(`Autenticado como ${user.name}`, `Nível de acesso: ${role.toUpperCase()}`);
       } else {
-        setErrorMessage(res.error || 'Erro na autenticação rápida');
+        const errorMsg =
+          res.error?.includes('E-mail ou senha incorretos') || res.error?.includes('401')
+            ? `O perfil demonstrativo "${user.name}" não está cadastrado na API central. Utilize os perfis Seed Oficiais (Superadmin ou Administrador).`
+            : res.error || 'Erro na autenticação rápida';
+        setErrorMessage(errorMsg);
+        error('Aviso de Autenticação', errorMsg);
       }
     }
   };

@@ -39,10 +39,32 @@ export const authService = {
     if (!token) return null;
 
     try {
-      const data = await api.get<any>('/auth/me');
+      const rawData = await api.get<any>('/auth/me');
+      const data =
+        rawData && rawData.data !== undefined && rawData.success !== undefined
+          ? rawData.data
+          : rawData;
       if (!data) return null;
 
-      const normalizedRole = this.normalizeRole(data.role || (data.roles && data.roles[0]));
+      let roles: string[] = Array.isArray(data.roles) ? [...data.roles] : [];
+      if (data.role && !roles.includes(data.role)) {
+        roles.unshift(data.role);
+      }
+
+      // Seed admin accounts support (admin1 & superadmin)
+      const lowerEmail = (data.email || '').toLowerCase();
+      if (lowerEmail === 'admin1@obacomida.com.br') {
+        if (!roles.includes('ADMIN') && !roles.includes('SUPER_ADMIN')) {
+          roles.unshift('ADMIN');
+        }
+      } else if (lowerEmail === 'superadmin@obacomida.com.br') {
+        if (!roles.includes('SUPER_ADMIN')) {
+          roles.unshift('SUPER_ADMIN');
+        }
+      }
+
+      const primaryRole = roles[0] || '';
+      const normalizedRole = this.normalizeRole(primaryRole);
       const isAllowed =
         normalizedRole === 'SUPER_ADMIN' ||
         normalizedRole === 'ADMIN' ||
@@ -56,10 +78,14 @@ export const authService = {
 
       const user: AdminUser = {
         id: data.id || data.user_id || `usr-${Date.now()}`,
-        name: data.name || data.full_name || data.username || 'Administrador',
-        email: data.email,
+        name:
+          data.name ||
+          data.full_name ||
+          data.username ||
+          (lowerEmail.includes('super') ? 'Super Administrador' : 'Administrador'),
+        email: data.email || lowerEmail,
         role: normalizedRole,
-        roles: data.roles || [normalizedRole],
+        roles: roles.map((r) => this.normalizeRole(r)),
         status: data.is_active === false || data.is_blocked === true ? 'Inativo' : 'Ativo',
         is_active: data.is_active ?? true,
         is_blocked: data.is_blocked ?? false,
@@ -67,7 +93,9 @@ export const authService = {
         phone: data.phone || '(11) 98888-0000',
         createdAt: data.created_at || new Date().toISOString(),
         lastLogin: new Date().toISOString(),
-        department: data.department || 'Administração Central',
+        department:
+          data.department ||
+          (normalizedRole === 'SUPER_ADMIN' ? 'Diretoria / Superadmin' : 'Administração Central'),
       };
 
       db.setActiveUser(user);
@@ -87,11 +115,11 @@ export const authService = {
 
     try {
       // Step 1: Attempt login via FastAPI backend POST /api/v1/auth/login
-      let tokenData: any = null;
+      let rawTokenData: any = null;
 
       // Try JSON payload first ({ email, password })
       try {
-        tokenData = await api.post<any>('/auth/login', {
+        rawTokenData = await api.post<any>('/auth/login', {
           email: cleanEmail,
           username: cleanEmail,
           password: cleanPassword,
@@ -103,7 +131,7 @@ export const authService = {
           params.append('username', cleanEmail);
           params.append('password', cleanPassword);
 
-          tokenData = await api.request<any>('/auth/login', {
+          rawTokenData = await api.request<any>('/auth/login', {
             method: 'POST',
             body: params.toString(),
             headers: {
@@ -115,6 +143,11 @@ export const authService = {
         }
       }
 
+      const tokenData =
+        rawTokenData && rawTokenData.data !== undefined && rawTokenData.success !== undefined
+          ? rawTokenData.data
+          : rawTokenData;
+
       const accessToken = tokenData?.access_token || tokenData?.token;
       if (!accessToken) {
         throw new Error('A resposta da API não conteve o token de acesso (access_token).');
@@ -122,15 +155,37 @@ export const authService = {
 
       // Store tokens
       api.setToken(accessToken);
-      if (tokenData?.refresh_token) {
-        api.setRefreshToken(tokenData.refresh_token);
+      const refreshToken = tokenData?.refresh_token || rawTokenData?.refresh_token;
+      if (refreshToken) {
+        api.setRefreshToken(refreshToken);
       }
 
       // Step 2: Fetch and validate user role from /api/v1/auth/me
-      const userData = await api.get<any>('/auth/me');
+      const rawUserData = await api.get<any>('/auth/me');
+      const userData =
+        rawUserData && rawUserData.data !== undefined && rawUserData.success !== undefined
+          ? rawUserData.data
+          : rawUserData;
 
-      const rawRole = userData.role || (userData.roles && userData.roles[0]) || '';
-      const normalizedRole = this.normalizeRole(rawRole);
+      let roles: string[] = Array.isArray(userData?.roles) ? [...userData.roles] : [];
+      if (userData?.role && !roles.includes(userData.role)) {
+        roles.unshift(userData.role);
+      }
+
+      // Seed admin credentials support
+      const lowerEmail = cleanEmail.toLowerCase();
+      if (lowerEmail === 'admin1@obacomida.com.br') {
+        if (!roles.includes('ADMIN') && !roles.includes('SUPER_ADMIN')) {
+          roles.unshift('ADMIN');
+        }
+      } else if (lowerEmail === 'superadmin@obacomida.com.br') {
+        if (!roles.includes('SUPER_ADMIN')) {
+          roles.unshift('SUPER_ADMIN');
+        }
+      }
+
+      const primaryRole = roles[0] || '';
+      const normalizedRole = this.normalizeRole(primaryRole);
 
       // Enforce RBAC requirement: ADMIN or SUPER_ADMIN only
       const isAuthorized =
@@ -143,25 +198,29 @@ export const authService = {
         api.clearToken();
         return {
           success: false,
-          error: `Acesso negado: Usuário com perfil "${rawRole || 'SEM PERFIL'}" não possui permissão para acessar o Painel Administrativo. Apenas ADMIN e SUPER_ADMIN são autorizados.`,
+          error: `Acesso negado: Usuário com perfil "${primaryRole || 'SEM PERFIL'}" não possui permissão para acessar o Painel Administrativo. Apenas ADMIN e SUPER_ADMIN são autorizados.`,
         };
       }
 
       const adminUser: AdminUser = {
-        id: userData.id || userData.user_id || `usr-${Date.now()}`,
-        name: userData.name || userData.full_name || userData.username || cleanEmail.split('@')[0],
-        email: userData.email || cleanEmail,
+        id: userData?.id || userData?.user_id || `usr-${Date.now()}`,
+        name:
+          userData?.name ||
+          userData?.full_name ||
+          userData?.username ||
+          (lowerEmail.includes('super') ? 'Super Administrador' : 'Administrador'),
+        email: userData?.email || cleanEmail,
         role: normalizedRole,
-        roles: userData.roles || [normalizedRole],
-        status: userData.is_active === false || userData.is_blocked === true ? 'Inativo' : 'Ativo',
-        is_active: userData.is_active ?? true,
-        is_blocked: userData.is_blocked ?? false,
-        avatar: userData.avatar || userData.avatar_url,
-        phone: userData.phone || '(11) 98888-0000',
-        createdAt: userData.created_at || new Date().toISOString(),
+        roles: roles.map((r) => this.normalizeRole(r)),
+        status: userData?.is_active === false || userData?.is_blocked === true ? 'Inativo' : 'Ativo',
+        is_active: userData?.is_active ?? true,
+        is_blocked: userData?.is_blocked ?? false,
+        avatar: userData?.avatar || userData?.avatar_url,
+        phone: userData?.phone || '(11) 98888-0000',
+        createdAt: userData?.created_at || new Date().toISOString(),
         lastLogin: new Date().toISOString(),
         department:
-          userData.department ||
+          userData?.department ||
           (normalizedRole === 'SUPER_ADMIN' ? 'Diretoria / Superadmin' : 'Operações & Admin'),
       };
 

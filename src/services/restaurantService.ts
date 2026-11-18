@@ -37,9 +37,19 @@ export const restaurantService = {
     try {
       const backendStatus = statusFilter && statusFilter !== 'all' ? STATUS_TO_BACKEND[statusFilter] || statusFilter : undefined;
       const params = backendStatus ? { status: backendStatus } : undefined;
-      const data = await api.get<any>('/admin/restaurants', params);
+      let data: any = null;
+      try {
+        data = await api.get<any>('/admin/restaurants', params);
+      } catch (adminErr: any) {
+        if (adminErr?.status === 403 || adminErr?.status === 404) {
+          data = await api.get<any>('/restaurants', params);
+        } else {
+          throw adminErr;
+        }
+      }
 
-      const list = Array.isArray(data) ? data : (data?.items || data?.data);
+      const rawList = Array.isArray(data) ? data : (data?.items || data?.data);
+      const list = Array.isArray(rawList) ? rawList : (rawList?.items || []);
       if (Array.isArray(list)) {
         return list.map((item) => this.normalizeFromApi(item));
       }

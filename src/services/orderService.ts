@@ -20,8 +20,19 @@ export const orderService = {
       if (filters?.start_date) params.start_date = filters.start_date;
       if (filters?.end_date) params.end_date = filters.end_date;
 
-      const data = await api.get<any>('/admin/orders', params);
-      const list = Array.isArray(data) ? data : (data?.items || data?.data);
+      let data: any = null;
+      try {
+        data = await api.get<any>('/admin/orders', params);
+      } catch (adminErr: any) {
+        if (adminErr?.status === 403 || adminErr?.status === 404) {
+          data = await api.get<any>('/orders', params);
+        } else {
+          throw adminErr;
+        }
+      }
+
+      const rawList = Array.isArray(data) ? data : (data?.items || data?.data);
+      const list = Array.isArray(rawList) ? rawList : (rawList?.items || []);
       if (Array.isArray(list)) {
         return list.map((item) => this.normalizeFromApi(item));
       }
