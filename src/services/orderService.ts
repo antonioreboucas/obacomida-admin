@@ -33,13 +33,17 @@ export const orderService = {
 
       const rawList = Array.isArray(data) ? data : (data?.items || data?.data);
       const list = Array.isArray(rawList) ? rawList : (rawList?.items || []);
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list)) {
         const mapped = list.map((item) => this.normalizeFromApi(item));
         db.saveOrders(mapped);
         return mapped;
       }
     } catch (err) {
-      console.warn('API de pedidos sem registros ou inacessível, utilizando pedidos iniciais:', err);
+      console.warn('API de pedidos inacessível ou sem permissão:', err);
+    }
+
+    if (!isMockEnabled()) {
+      return [];
     }
 
     const all = db.getOrders();
@@ -197,7 +201,7 @@ export const orderService = {
   normalizeFromApi(item: any): Order {
     return {
       id: String(item.id),
-      code: item.code || `#OBA-${String(item.id).slice(-4)}`,
+      code: item.public_code || item.code || `#OBA-${String(item.id).slice(-4)}`,
       customerId: item.customer_id || item.customerId || 'cust-1',
       customerName: item.customer_name || item.customerName || 'Cliente',
       customerPhone: item.customer_phone || item.customerPhone || '(11) 99999-9999',
@@ -218,7 +222,7 @@ export const orderService = {
       deliveryFee: Number(item.delivery_fee ?? item.deliveryFee ?? 0),
       serviceFee: Number(item.service_fee ?? item.serviceFee ?? 0),
       discount: Number(item.discount ?? 0),
-      totalAmount: Number(item.total_amount ?? item.totalAmount ?? 0),
+      totalAmount: Number(item.total ?? item.total_amount ?? item.totalAmount ?? 0),
       paymentMethod: item.payment_method || item.paymentMethod || 'Pix',
       status: item.status || 'Criado',
       deliveryType: item.delivery_type || item.deliveryType || 'Entrega',

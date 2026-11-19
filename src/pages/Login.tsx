@@ -23,7 +23,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { authService } from '../services/authService';
-import { api } from '../services/api';
+import { api, isMockEnabled } from '../services/api';
 import { db } from '../storage/db';
 import { Modal } from '../components/common/Modal';
 import type { AdminRole } from '../types';
@@ -230,38 +230,40 @@ export const LoginPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Mode Switcher Tabs */}
-            <div className="grid grid-cols-2 p-1 bg-slate-950/70 border border-slate-800 rounded-xl mb-6">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('form');
-                  setErrorMessage(null);
-                }}
-                className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                  activeTab === 'form'
-                    ? 'bg-orange-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Credenciais
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('demo');
-                  setErrorMessage(null);
-                }}
-                className={`py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  activeTab === 'demo'
-                    ? 'bg-orange-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>Perfis Demo</span>
-              </button>
-            </div>
+            {/* Mode Switcher Tabs (Only visible when isMockEnabled() is true) */}
+            {isMockEnabled() && (
+              <div className="grid grid-cols-2 p-1 bg-slate-950/70 border border-slate-800 rounded-xl mb-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('form');
+                    setErrorMessage(null);
+                  }}
+                  className={`py-2 text-xs font-semibold rounded-lg transition-all ${
+                    activeTab === 'form'
+                      ? 'bg-orange-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Credenciais
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('demo');
+                    setErrorMessage(null);
+                  }}
+                  className={`py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    activeTab === 'demo'
+                      ? 'bg-orange-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Perfis Demo</span>
+                </button>
+              </div>
+            )}
 
             {/* Error Message Alert */}
             {errorMessage && (
@@ -477,8 +479,8 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            {/* Quick Demo Footer hint */}
-            {activeTab === 'form' && (
+            {/* Quick Demo Footer hint (Only visible when isMockEnabled() is true) */}
+            {isMockEnabled() && activeTab === 'form' && (
               <div className="mt-5 pt-4 border-t border-slate-800 text-center">
                 <button
                   type="button"

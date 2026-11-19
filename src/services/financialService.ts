@@ -29,11 +29,15 @@ export const financialService = {
 
       const data = await api.get<any>('/financial/commissions', params);
       const list = Array.isArray(data) ? data : (data?.items || data?.data);
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list)) {
         return list.map((item) => this.normalizeCommission(item));
       }
     } catch (err) {
-      console.warn('API de comissões vazia ou inacessível, utilizando registros iniciais:', err);
+      console.warn('API de comissões inacessível ou sem permissão:', err);
+    }
+
+    if (!isMockEnabled()) {
+      return [];
     }
 
     const records = db.getFinancialRecords();

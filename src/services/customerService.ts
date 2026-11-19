@@ -17,7 +17,7 @@ export const customerService = {
       });
 
       const list = Array.isArray(data) ? data : (data?.items || data?.data);
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list)) {
         return list.map((item: any) => ({
           id: String(item.id),
           name: item.name || item.full_name || 'Cliente',
@@ -32,7 +32,11 @@ export const customerService = {
         }));
       }
     } catch (err) {
-      console.warn('API de clientes vazia ou inacessível, utilizando clientes iniciais:', err);
+      console.warn('API de clientes inacessível ou sem permissão:', err);
+    }
+
+    if (!isMockEnabled()) {
+      return [];
     }
 
     return this.getAll();

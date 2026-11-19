@@ -22,13 +22,17 @@ export const categoryService = {
 
       const rawList = Array.isArray(data) ? data : (data?.items || data?.data);
       const list = Array.isArray(rawList) ? rawList : (rawList?.items || []);
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list)) {
         const mapped = list.map((item, index) => this.normalizeFromApi(item, index));
         db.saveCategories(mapped);
         return mapped.sort((a, b) => (a.sort_order ?? a.displayOrder) - (b.sort_order ?? b.displayOrder));
       }
     } catch (err) {
-      console.warn('API de categorias vazia ou inacessível, utilizando categorias iniciais:', err);
+      console.warn('API de categorias inacessível ou sem permissão:', err);
+    }
+
+    if (!isMockEnabled()) {
+      return [];
     }
 
     return this.getAll();
@@ -270,14 +274,14 @@ export const categoryService = {
   normalizeFromApi(item: any, fallbackIndex: number): Category {
     const order = Number(item.sort_order ?? item.display_order ?? item.displayOrder ?? fallbackIndex + 1);
     const active = item.is_active ?? item.active ?? true;
-    const img = item.icon_url || item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&auto=format&fit=crop&q=80';
+    const img = item.image_url || item.icon_url || item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&auto=format&fit=crop&q=80';
 
     return {
       id: String(item.id),
       name: item.name || 'Categoria',
       slug: item.slug || (item.name ? item.name.toLowerCase().replace(/\s+/g, '-') : 'categoria'),
       icon: item.icon || 'Utensils',
-      icon_url: item.icon_url,
+      icon_url: item.image_url || item.icon_url,
       image: img,
       displayOrder: order,
       sort_order: order,

@@ -15,6 +15,7 @@ import {
 import { StatCard } from '../components/common/StatCard';
 import { Badge } from '../components/common/Badge';
 import { reportService, type ReportFilter } from '../services/reportService';
+import { isMockEnabled } from '../services/api';
 import { db } from '../storage/db';
 import type { AdminOverviewKPIs } from '../types';
 import {
@@ -88,25 +89,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     };
   }, [filterPeriod, customStart, customEnd]);
 
+  const isMock = isMockEnabled();
   const restaurants = db.getRestaurants();
   const customers = db.getCustomers();
   const orders = db.getOrders();
 
   const totalRestaurants = restaurants.length;
-  const activeRestaurants = apiOverview?.active_restaurants ?? restaurants.filter((r) => r.status === 'Ativo').length;
+  const activeRestaurants = apiOverview?.active_restaurants ?? (isMock ? restaurants.filter((r) => r.status === 'Ativo').length : totalRestaurants);
   const pendingRestaurants = restaurants.filter(
-    (r) => r.status === 'Pendente' || r.status === 'Em análise'
+    (r) => r.status === 'Pendente' || r.status === 'Em análise' || r.status === 'PENDING'
   ).length;
 
-  const totalCustomers = apiOverview?.total_customers ?? customers.length;
-  const totalOrders = apiOverview?.total_orders ?? reportData.totalOrders;
-  const totalGmv = apiOverview?.total_gmv ?? reportData.grossRevenue;
-  const platformRevenue = apiOverview?.platform_revenue ?? reportData.platformRevenue;
-  const averageTicket = apiOverview?.average_ticket ?? reportData.averageTicket;
+  const totalCustomers = apiOverview?.total_customers ?? (isMock ? customers.length : 0);
+  const totalOrders = apiOverview?.total_orders ?? (isMock ? reportData.totalOrders : orders.length);
+  const totalGmv = apiOverview?.total_gmv ?? (isMock ? reportData.grossRevenue : 0);
+  const platformRevenue = apiOverview?.platform_revenue ?? (isMock ? reportData.platformRevenue : 0);
+  const averageTicket = apiOverview?.average_ticket ?? (isMock ? reportData.averageTicket : (totalOrders > 0 ? totalGmv / totalOrders : 0));
 
   const activeOrdersCount = orders.filter((o) =>
-    ['Criado', 'Confirmado', 'Em preparação', 'Saiu para entrega'].includes(o.status)
+    ['Criado', 'Confirmado', 'Em preparação', 'Saiu para entrega', 'PENDING', 'CONFIRMED', 'PREPARING'].includes(o.status)
   ).length;
+
+  const displayedOrdersByDay = isMock ? reportData.ordersByDay : (orders.length > 0 ? reportData.ordersByDay : []);
+  const displayedCategorySales = categorySales.length > 0 ? categorySales : (isMock ? reportData.ordersByCategory : []);
+  const displayedTopRestaurants = topRestaurantsApi.length > 0 ? topRestaurantsApi : (isMock ? reportData.topRestaurants : []);
+  const displayedOrdersByStatus = isMock ? reportData.ordersByStatus : (orders.length > 0 ? reportData.ordersByStatus : []);
 
   return (
     <div className="space-y-6">
@@ -278,7 +285,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </span>
           </div>
 
-          {reportData.ordersByDay.length === 0 ? (
+          {displayedOrdersByDay.length === 0 ? (
             <div className="h-72 w-full flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
               <ShoppingBag className="w-8 h-8 mb-2 text-slate-300" />
               <p className="text-xs font-medium">Nenhum pedido registrado no período selecionado</p>
@@ -286,7 +293,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           ) : (
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={reportData.ordersByDay.slice(-14)}>
+                <AreaChart data={displayedOrdersByDay.slice(-14)}>
                   <defs>
                     <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#ff6600" stopOpacity={0.25} />
@@ -337,7 +344,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </button>
           </div>
 
-          {(categorySales.length > 0 ? categorySales : reportData.ordersByCategory).length === 0 ? (
+          {displayedCategorySales.length === 0 ? (
             <div className="h-72 w-full flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
               <Store className="w-8 h-8 mb-2 text-slate-300" />
               <p className="text-xs font-medium">Nenhuma venda por categoria registrada</p>
@@ -346,7 +353,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={categorySales.length > 0 ? categorySales : reportData.ordersByCategory}
+                  data={displayedCategorySales}
                   layout="vertical"
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -404,14 +411,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {(topRestaurantsApi.length > 0 ? topRestaurantsApi : reportData.topRestaurants).length === 0 ? (
+                {displayedTopRestaurants.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-slate-400">
                       Nenhum estabelecimento ou venda registrada no período.
                     </td>
                   </tr>
                 ) : (
-                  (topRestaurantsApi.length > 0 ? topRestaurantsApi : reportData.topRestaurants).map(
+                  displayedTopRestaurants.map(
                     (rest, index) => (
                       <tr key={rest.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3 px-3 font-bold text-slate-400">{index + 1}</td>
@@ -448,7 +455,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             <p className="text-xs text-slate-500">Composição dos pedidos no período</p>
           </div>
 
-          {reportData.ordersByStatus.length === 0 ? (
+          {displayedOrdersByStatus.length === 0 ? (
             <div className="h-56 w-full my-auto flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
               <Clock className="w-8 h-8 mb-2 text-slate-300" />
               <p className="text-xs font-medium">Nenhum pedido para compor status</p>
@@ -459,7 +466,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={reportData.ordersByStatus}
+                      data={displayedOrdersByStatus}
                       dataKey="count"
                       nameKey="status"
                       cx="50%"
@@ -468,7 +475,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                       outerRadius={75}
                       paddingAngle={3}
                     >
-                      {reportData.ordersByStatus.map((_, index) => (
+                      {displayedOrdersByStatus.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
@@ -481,7 +488,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs">
-                {reportData.ordersByStatus.slice(0, 6).map((item, idx) => (
+                {displayedOrdersByStatus.slice(0, 6).map((item, idx) => (
                   <div key={item.status} className="flex items-center gap-1.5">
                     <span
                       className="w-2.5 h-2.5 rounded-full shrink-0"

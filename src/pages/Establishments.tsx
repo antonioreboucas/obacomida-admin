@@ -35,7 +35,7 @@ import {
   getStoreAppUrlDisplay,
   getStorePartnerUrlDisplay,
 } from '../utils/slugUtils';
-import type { Restaurant, RestaurantStatus } from '../types';
+import type { Restaurant, RestaurantStatus, Category } from '../types';
 
 interface EstablishmentsProps {
   onViewDetails: (restaurantId: string) => void;
@@ -46,8 +46,8 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
   const { success, error, info } = useToast();
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const categories = categoryService.getAll();
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -109,8 +109,12 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
   const refreshList = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await restaurantService.fetchAdminRestaurants(statusFilter);
+      const [data, cats] = await Promise.all([
+        restaurantService.fetchAdminRestaurants(statusFilter),
+        categoryService.fetchGlobal(),
+      ]);
       setRestaurants(data);
+      setCategories(cats);
     } catch (err) {
       console.warn('Erro ao carregar lista de estabelecimentos:', err);
     } finally {

@@ -58,6 +58,9 @@ export const Orders: React.FC<OrdersProps> = ({ onViewOrder }) => {
       if (isMockEnabled()) {
         setOrders(orderService.getAll());
         setRestaurants(restaurantService.getAll());
+      } else {
+        setOrders([]);
+        setRestaurants([]);
       }
     } finally {
       setIsLoading(false);

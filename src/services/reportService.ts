@@ -54,26 +54,24 @@ export const reportService = {
         const activeRestaurants = Number(
           payload.active_restaurants_count ?? payload.active_restaurants ?? payload.activeRestaurants ?? 0
         );
-        const totalCustomers = Number(
-          payload.total_customers ?? payload.totalCustomers ?? 0
+        const registeredCustomers = Number(
+          payload.registered_customers_count ?? payload.total_customers ?? payload.totalCustomers ?? 0
         );
         const averageTicket = Number(
           payload.average_ticket ?? (totalOrders > 0 ? totalGmv / totalOrders : 0)
         );
 
-        if (totalOrders > 0 || totalGmv > 0 || activeRestaurants > 0) {
-          return {
-            total_gmv: totalGmv,
-            platform_revenue: platformRevenue,
-            total_orders: totalOrders,
-            active_restaurants: activeRestaurants,
-            total_customers: totalCustomers,
-            average_ticket: Number(averageTicket.toFixed(2)),
-          };
-        }
+        return {
+          total_gmv: totalGmv,
+          platform_revenue: platformRevenue,
+          total_orders: totalOrders,
+          active_restaurants: activeRestaurants,
+          total_customers: registeredCustomers,
+          average_ticket: Number(averageTicket.toFixed(2)),
+        };
       }
     } catch {
-      // Fallback to starter metrics
+      // Fallback to real loaded DB or zero
     }
 
     const restaurants = db.getRestaurants();
@@ -92,7 +90,7 @@ export const reportService = {
       total_gmv: Number(gmv.toFixed(2)),
       platform_revenue: Number(platformRevenue.toFixed(2)),
       total_orders: orders.length,
-      active_restaurants: restaurants.filter((r) => r.status === 'Ativo').length,
+      active_restaurants: restaurants.filter((r) => r.status === 'Ativo' || r.status === 'ACTIVE').length,
       total_customers: customers.length,
       average_ticket: Number(avgTicket.toFixed(2)),
     };
@@ -106,7 +104,7 @@ export const reportService = {
     try {
       const data = await api.get<any>('/reports/admin/sales-by-category');
       const list = Array.isArray(data) ? data : (data?.items || data?.data);
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list)) {
         return list.map((item) => ({
           category: item.category || item.category_name || item.name || 'Outros',
           revenue: Number(item.revenue ?? item.total_sales ?? item.total_amount ?? 0),
@@ -115,7 +113,11 @@ export const reportService = {
         }));
       }
     } catch {
-      // Fallback to starter report
+      // API unreachable
+    }
+
+    if (!isMockEnabled()) {
+      return [];
     }
 
     const report = this.generateReport({ period: '30days' });
@@ -134,7 +136,7 @@ export const reportService = {
     try {
       const data = await api.get<any>('/reports/admin/top-restaurants');
       const list = Array.isArray(data) ? data : (data?.items || data?.data);
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list)) {
         return list.map((item) => ({
           id: item.id || item.restaurant_id || `rest-${Math.random()}`,
           name: item.name || item.restaurant_name || 'Restaurante',
@@ -143,7 +145,11 @@ export const reportService = {
         }));
       }
     } catch {
-      // Fallback to starter report
+      // API unreachable
+    }
+
+    if (!isMockEnabled()) {
+      return [];
     }
 
     const report = this.generateReport({ period: '30days' });

@@ -50,13 +50,17 @@ export const restaurantService = {
 
       const rawList = Array.isArray(data) ? data : (data?.items || data?.data);
       const list = Array.isArray(rawList) ? rawList : (rawList?.items || []);
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list)) {
         const mapped = list.map((item) => this.normalizeFromApi(item));
         db.saveRestaurants(mapped);
         return mapped;
       }
     } catch (err) {
-      console.warn('API de restaurantes sem registros ou inacessível, utilizando dados iniciais:', err);
+      console.warn('API de restaurantes inacessível ou sem permissão:', err);
+    }
+
+    if (!isMockEnabled()) {
+      return [];
     }
 
     const all = db.getRestaurants();
@@ -134,21 +138,22 @@ export const restaurantService = {
   },
 
   normalizeFromApi(item: any): Restaurant {
-    const slug = item.slug || generateSlug(item.name || 'loja');
+    const rawName = item.trade_name || item.name || item.corporate_name || 'Restaurante';
+    const slug = item.slug || generateSlug(rawName || 'loja');
     const rawRate = Number(item.commission_rate ?? item.commissionRate ?? 0.12);
     const commissionRate = rawRate <= 1 && rawRate > 0 ? Number((rawRate * 100).toFixed(1)) : rawRate;
 
     return {
       id: String(item.id),
-      name: item.name || 'Restaurante',
+      name: rawName,
       slug,
       appUrl: item.app_url || item.appUrl || getStoreAppUrl(slug),
       partnerUrl: item.partner_url || item.partnerUrl || getStorePartnerUrl(slug),
-      logo: item.logo || item.logo_url || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80',
-      coverImage: item.cover_image || item.coverImage,
-      category: item.category_name || item.category || 'Restaurantes',
-      categoryId: item.category_id || item.categoryId || 'cat-1',
-      ownerName: item.owner_name || item.ownerName || 'Responsável',
+      logo: item.logo_url || item.logo || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80',
+      coverImage: item.banner_url || item.cover_image || item.coverImage,
+      category: item.global_category_name || item.category_name || item.category || 'Restaurantes',
+      categoryId: item.global_category_id || item.category_id || item.categoryId || 'cat-1',
+      ownerName: item.owner_name || item.ownerName || item.corporate_name || 'Responsável',
       phone: item.phone || '(11) 99999-9999',
       email: item.email || 'contato@restaurante.com.br',
       city: item.city || 'São Paulo',
@@ -164,8 +169,8 @@ export const restaurantService = {
       commissionRate,
       fixedFee: Number(item.fixed_fee ?? item.fixedFee ?? 1.5),
       minimumOrder: Number(item.minimum_order ?? item.minimumOrder ?? 20.0),
-      deliveryTimeMin: Number(item.delivery_time_min ?? item.deliveryTimeMin ?? 25),
-      deliveryTimeMax: Number(item.delivery_time_max ?? item.deliveryTimeMax ?? 45),
+      deliveryTimeMin: Number(item.average_delivery_time_min ?? item.delivery_time_min ?? item.deliveryTimeMin ?? 25),
+      deliveryTimeMax: Number(item.average_delivery_time_max ?? item.delivery_time_max ?? item.deliveryTimeMax ?? 45),
       deliveryFee: Number(item.delivery_fee ?? item.deliveryFee ?? 5.0),
       isOpen: item.is_open ?? item.isOpen ?? true,
       theme: item.theme,
