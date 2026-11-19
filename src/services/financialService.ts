@@ -29,17 +29,11 @@ export const financialService = {
 
       const data = await api.get<any>('/financial/commissions', params);
       const list = Array.isArray(data) ? data : (data?.items || data?.data);
-      if (Array.isArray(list)) {
+      if (Array.isArray(list) && list.length > 0) {
         return list.map((item) => this.normalizeCommission(item));
       }
-      if (!isMockEnabled()) {
-        return [];
-      }
     } catch (err) {
-      if (!isMockEnabled()) {
-        console.warn('Erro ao carregar comissões da API central:', err);
-        return [];
-      }
+      console.warn('API de comissões vazia ou inacessível, utilizando registros iniciais:', err);
     }
 
     const records = db.getFinancialRecords();

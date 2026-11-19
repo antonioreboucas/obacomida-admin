@@ -50,17 +50,13 @@ export const restaurantService = {
 
       const rawList = Array.isArray(data) ? data : (data?.items || data?.data);
       const list = Array.isArray(rawList) ? rawList : (rawList?.items || []);
-      if (Array.isArray(list)) {
-        return list.map((item) => this.normalizeFromApi(item));
-      }
-      if (!isMockEnabled()) {
-        return [];
+      if (Array.isArray(list) && list.length > 0) {
+        const mapped = list.map((item) => this.normalizeFromApi(item));
+        db.saveRestaurants(mapped);
+        return mapped;
       }
     } catch (err) {
-      if (!isMockEnabled()) {
-        console.warn('Erro ao carregar restaurantes da API central:', err);
-        return [];
-      }
+      console.warn('API de restaurantes sem registros ou inacessível, utilizando dados iniciais:', err);
     }
 
     const all = db.getRestaurants();

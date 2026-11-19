@@ -56,71 +56,34 @@ class MockDatabase {
   private init() {
     if (typeof window === 'undefined') return;
 
-    if (!isMockEnabled()) {
-      // Purge legacy mock datasets from localStorage when running in real API mode
-      const currentVer = localStorage.getItem(STORAGE_KEYS.VERSION);
-      if (currentVer !== 'real_api_mode_v2') {
-        localStorage.removeItem(STORAGE_KEYS.ADMIN_USERS);
-        localStorage.removeItem(STORAGE_KEYS.RESTAURANTS);
-        localStorage.removeItem(STORAGE_KEYS.CUSTOMERS);
-        localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
-        localStorage.removeItem(STORAGE_KEYS.ORDERS);
-        localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
-        localStorage.removeItem(STORAGE_KEYS.PROMOTIONS);
-        localStorage.removeItem(STORAGE_KEYS.REVIEWS);
-        localStorage.removeItem(STORAGE_KEYS.FINANCIAL);
-        localStorage.removeItem(STORAGE_KEYS.SUPPORT);
-        localStorage.removeItem(STORAGE_KEYS.AUDIT);
-        localStorage.removeItem(STORAGE_KEYS.ACTIVE_USER);
-        localStorage.setItem(STORAGE_KEYS.VERSION, 'real_api_mode_v2');
-      }
-      return;
+    // Ensure initial starter dataset (establishments, categories, orders) is present
+    const existingRest = this.getItem<Restaurant[]>(STORAGE_KEYS.RESTAURANTS, []);
+    if (!existingRest || existingRest.length === 0) {
+      this.populateStarterDataset();
     }
+  }
 
-    // If version doesn't exist or is older, populate initial data (Mock mode only)
-    if (!localStorage.getItem(STORAGE_KEYS.VERSION)) {
-      this.resetToDefaults();
-    }
+  public populateStarterDataset() {
+    this.setItem(STORAGE_KEYS.RESTAURANTS, initialRestaurants);
+    this.setItem(STORAGE_KEYS.CATEGORIES, initialCategories);
+    this.setItem(STORAGE_KEYS.PRODUCTS, initialProducts);
+    this.setItem(STORAGE_KEYS.ORDERS, initialOrders);
+    this.setItem(STORAGE_KEYS.CUSTOMERS, initialCustomers);
+    this.setItem(STORAGE_KEYS.FINANCIAL, initialFinancialRecords);
+    this.setItem(STORAGE_KEYS.AUDIT, initialAuditLogs);
+    this.setItem(STORAGE_KEYS.SUPPORT, initialSupportTickets);
+    this.setItem(STORAGE_KEYS.SETTINGS, initialSettings);
+    this.setItem(STORAGE_KEYS.ADMIN_USERS, initialAdminUsers);
+    localStorage.setItem(STORAGE_KEYS.VERSION, 'starter_dataset_v1');
+    this.notify();
   }
 
   public resetToDefaults() {
-    if (!isMockEnabled()) {
-      this.clearMockData();
-      return;
-    }
-
-    localStorage.setItem(STORAGE_KEYS.VERSION, '1.0');
-    localStorage.setItem(STORAGE_KEYS.ADMIN_USERS, JSON.stringify(initialAdminUsers));
-    localStorage.setItem(STORAGE_KEYS.RESTAURANTS, JSON.stringify(initialRestaurants));
-    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(initialCustomers));
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(initialProducts));
-    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(initialOrders));
-    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(initialCategories));
-    localStorage.setItem(STORAGE_KEYS.PROMOTIONS, JSON.stringify(initialPromotions));
-    localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(initialReviews));
-    localStorage.setItem(STORAGE_KEYS.FINANCIAL, JSON.stringify(initialFinancialRecords));
-    localStorage.setItem(STORAGE_KEYS.SUPPORT, JSON.stringify(initialSupportTickets));
-    localStorage.setItem(STORAGE_KEYS.AUDIT, JSON.stringify(initialAuditLogs));
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(initialSettings));
-    localStorage.setItem(STORAGE_KEYS.ACTIVE_USER, JSON.stringify(initialAdminUsers[0]));
-    this.notify();
+    this.populateStarterDataset();
   }
 
   public clearMockData() {
-    localStorage.removeItem(STORAGE_KEYS.ADMIN_USERS);
-    localStorage.removeItem(STORAGE_KEYS.RESTAURANTS);
-    localStorage.removeItem(STORAGE_KEYS.CUSTOMERS);
-    localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
-    localStorage.removeItem(STORAGE_KEYS.ORDERS);
-    localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
-    localStorage.removeItem(STORAGE_KEYS.PROMOTIONS);
-    localStorage.removeItem(STORAGE_KEYS.REVIEWS);
-    localStorage.removeItem(STORAGE_KEYS.FINANCIAL);
-    localStorage.removeItem(STORAGE_KEYS.SUPPORT);
-    localStorage.removeItem(STORAGE_KEYS.AUDIT);
-    localStorage.removeItem(STORAGE_KEYS.ACTIVE_USER);
-    localStorage.setItem(STORAGE_KEYS.VERSION, 'real_api_mode');
-    this.notify();
+    this.populateStarterDataset();
   }
 
   public subscribe(listener: () => void) {
@@ -154,7 +117,8 @@ class MockDatabase {
 
   // Admin Users
   public getAdminUsers(): AdminUser[] {
-    return this.getItem<AdminUser[]>(STORAGE_KEYS.ADMIN_USERS, isMockEnabled() ? initialAdminUsers : []);
+    const list = this.getItem<AdminUser[]>(STORAGE_KEYS.ADMIN_USERS, initialAdminUsers);
+    return list && list.length > 0 ? list : initialAdminUsers;
   }
   public saveAdminUsers(users: AdminUser[]): void {
     this.setItem(STORAGE_KEYS.ADMIN_USERS, users);
@@ -162,20 +126,7 @@ class MockDatabase {
 
   // Active User / Session
   public getActiveUser(): AdminUser {
-    const fallbackUser: AdminUser = isMockEnabled()
-      ? initialAdminUsers[0]
-      : {
-          id: '',
-          name: '',
-          email: '',
-          role: 'ADMIN',
-          status: 'Inativo',
-          createdAt: '',
-          lastLogin: '',
-          phone: '',
-          department: '',
-        };
-    return this.getItem<AdminUser>(STORAGE_KEYS.ACTIVE_USER, fallbackUser);
+    return this.getItem<AdminUser>(STORAGE_KEYS.ACTIVE_USER, initialAdminUsers[0]);
   }
   public setActiveUser(user: AdminUser): void {
     this.setItem(STORAGE_KEYS.ACTIVE_USER, user);
@@ -183,9 +134,10 @@ class MockDatabase {
 
   // Restaurants
   public getRestaurants(): Restaurant[] {
-    const list = this.getItem<Restaurant[]>(STORAGE_KEYS.RESTAURANTS, isMockEnabled() ? initialRestaurants : []);
+    const list = this.getItem<Restaurant[]>(STORAGE_KEYS.RESTAURANTS, initialRestaurants);
+    const validList = list && list.length > 0 ? list : initialRestaurants;
     let hasChanges = false;
-    const normalized = list.map((r) => {
+    const normalized = validList.map((r) => {
       let slug = r.slug;
       if (!slug) {
         slug = generateSlug(r.name);
@@ -221,7 +173,8 @@ class MockDatabase {
 
   // Customers
   public getCustomers(): Customer[] {
-    return this.getItem<Customer[]>(STORAGE_KEYS.CUSTOMERS, isMockEnabled() ? initialCustomers : []);
+    const list = this.getItem<Customer[]>(STORAGE_KEYS.CUSTOMERS, initialCustomers);
+    return list && list.length > 0 ? list : initialCustomers;
   }
   public saveCustomers(customers: Customer[]): void {
     this.setItem(STORAGE_KEYS.CUSTOMERS, customers);
@@ -229,7 +182,8 @@ class MockDatabase {
 
   // Products
   public getProducts(): Product[] {
-    return this.getItem<Product[]>(STORAGE_KEYS.PRODUCTS, isMockEnabled() ? initialProducts : []);
+    const list = this.getItem<Product[]>(STORAGE_KEYS.PRODUCTS, initialProducts);
+    return list && list.length > 0 ? list : initialProducts;
   }
   public saveProducts(products: Product[]): void {
     this.setItem(STORAGE_KEYS.PRODUCTS, products);
@@ -237,7 +191,8 @@ class MockDatabase {
 
   // Orders
   public getOrders(): Order[] {
-    return this.getItem<Order[]>(STORAGE_KEYS.ORDERS, isMockEnabled() ? initialOrders : []);
+    const list = this.getItem<Order[]>(STORAGE_KEYS.ORDERS, initialOrders);
+    return list && list.length > 0 ? list : initialOrders;
   }
   public saveOrders(orders: Order[]): void {
     this.setItem(STORAGE_KEYS.ORDERS, orders);
@@ -245,7 +200,8 @@ class MockDatabase {
 
   // Categories
   public getCategories(): Category[] {
-    return this.getItem<Category[]>(STORAGE_KEYS.CATEGORIES, isMockEnabled() ? initialCategories : []);
+    const list = this.getItem<Category[]>(STORAGE_KEYS.CATEGORIES, initialCategories);
+    return list && list.length > 0 ? list : initialCategories;
   }
   public saveCategories(categories: Category[]): void {
     this.setItem(STORAGE_KEYS.CATEGORIES, categories);
@@ -253,7 +209,8 @@ class MockDatabase {
 
   // Promotions
   public getPromotions(): Promotion[] {
-    return this.getItem<Promotion[]>(STORAGE_KEYS.PROMOTIONS, isMockEnabled() ? initialPromotions : []);
+    const list = this.getItem<Promotion[]>(STORAGE_KEYS.PROMOTIONS, initialPromotions);
+    return list && list.length > 0 ? list : initialPromotions;
   }
   public savePromotions(promotions: Promotion[]): void {
     this.setItem(STORAGE_KEYS.PROMOTIONS, promotions);
@@ -261,7 +218,8 @@ class MockDatabase {
 
   // Reviews
   public getReviews(): Review[] {
-    return this.getItem<Review[]>(STORAGE_KEYS.REVIEWS, isMockEnabled() ? initialReviews : []);
+    const list = this.getItem<Review[]>(STORAGE_KEYS.REVIEWS, initialReviews);
+    return list && list.length > 0 ? list : initialReviews;
   }
   public saveReviews(reviews: Review[]): void {
     this.setItem(STORAGE_KEYS.REVIEWS, reviews);
@@ -269,7 +227,8 @@ class MockDatabase {
 
   // Financial
   public getFinancialRecords(): FinancialRecord[] {
-    return this.getItem<FinancialRecord[]>(STORAGE_KEYS.FINANCIAL, isMockEnabled() ? initialFinancialRecords : []);
+    const list = this.getItem<FinancialRecord[]>(STORAGE_KEYS.FINANCIAL, initialFinancialRecords);
+    return list && list.length > 0 ? list : initialFinancialRecords;
   }
   public saveFinancialRecords(records: FinancialRecord[]): void {
     this.setItem(STORAGE_KEYS.FINANCIAL, records);
@@ -277,7 +236,8 @@ class MockDatabase {
 
   // Support
   public getSupportTickets(): SupportTicket[] {
-    return this.getItem<SupportTicket[]>(STORAGE_KEYS.SUPPORT, isMockEnabled() ? initialSupportTickets : []);
+    const list = this.getItem<SupportTicket[]>(STORAGE_KEYS.SUPPORT, initialSupportTickets);
+    return list && list.length > 0 ? list : initialSupportTickets;
   }
   public saveSupportTickets(tickets: SupportTicket[]): void {
     this.setItem(STORAGE_KEYS.SUPPORT, tickets);
@@ -285,7 +245,8 @@ class MockDatabase {
 
   // Audit Logs
   public getAuditLogs(): AuditLog[] {
-    return this.getItem<AuditLog[]>(STORAGE_KEYS.AUDIT, isMockEnabled() ? initialAuditLogs : []);
+    const list = this.getItem<AuditLog[]>(STORAGE_KEYS.AUDIT, initialAuditLogs);
+    return list && list.length > 0 ? list : initialAuditLogs;
   }
   public logAudit(log: Omit<AuditLog, 'id' | 'timestamp'>): void {
     const logs = this.getAuditLogs();

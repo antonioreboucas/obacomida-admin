@@ -33,17 +33,13 @@ export const orderService = {
 
       const rawList = Array.isArray(data) ? data : (data?.items || data?.data);
       const list = Array.isArray(rawList) ? rawList : (rawList?.items || []);
-      if (Array.isArray(list)) {
-        return list.map((item) => this.normalizeFromApi(item));
-      }
-      if (!isMockEnabled()) {
-        return [];
+      if (Array.isArray(list) && list.length > 0) {
+        const mapped = list.map((item) => this.normalizeFromApi(item));
+        db.saveOrders(mapped);
+        return mapped;
       }
     } catch (err) {
-      if (!isMockEnabled()) {
-        console.warn('Erro ao carregar pedidos da API central:', err);
-        return [];
-      }
+      console.warn('API de pedidos sem registros ou inacessível, utilizando pedidos iniciais:', err);
     }
 
     const all = db.getOrders();

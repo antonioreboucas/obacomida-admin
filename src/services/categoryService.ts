@@ -22,22 +22,13 @@ export const categoryService = {
 
       const rawList = Array.isArray(data) ? data : (data?.items || data?.data);
       const list = Array.isArray(rawList) ? rawList : (rawList?.items || []);
-      if (Array.isArray(list)) {
+      if (Array.isArray(list) && list.length > 0) {
         const mapped = list.map((item, index) => this.normalizeFromApi(item, index));
-        // Keep in sync with local storage
-        if (mapped.length > 0) {
-          db.saveCategories(mapped);
-        }
+        db.saveCategories(mapped);
         return mapped.sort((a, b) => (a.sort_order ?? a.displayOrder) - (b.sort_order ?? b.displayOrder));
       }
-      if (!isMockEnabled()) {
-        return [];
-      }
     } catch (err) {
-      if (!isMockEnabled()) {
-        console.warn('Erro ao carregar categorias globais da API:', err);
-        return [];
-      }
+      console.warn('API de categorias vazia ou inacessível, utilizando categorias iniciais:', err);
     }
 
     return this.getAll();

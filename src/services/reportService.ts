@@ -61,56 +61,40 @@ export const reportService = {
           payload.average_ticket ?? (totalOrders > 0 ? totalGmv / totalOrders : 0)
         );
 
-        return {
-          total_gmv: totalGmv,
-          platform_revenue: platformRevenue,
-          total_orders: totalOrders,
-          active_restaurants: activeRestaurants,
-          total_customers: totalCustomers,
-          average_ticket: Number(averageTicket.toFixed(2)),
-        };
+        if (totalOrders > 0 || totalGmv > 0 || activeRestaurants > 0) {
+          return {
+            total_gmv: totalGmv,
+            platform_revenue: platformRevenue,
+            total_orders: totalOrders,
+            active_restaurants: activeRestaurants,
+            total_customers: totalCustomers,
+            average_ticket: Number(averageTicket.toFixed(2)),
+          };
+        }
       }
     } catch {
-      if (!isMockEnabled()) {
-        return {
-          total_gmv: 0,
-          platform_revenue: 0,
-          total_orders: 0,
-          active_restaurants: 0,
-          total_customers: 0,
-          average_ticket: 0,
-        };
-      }
-      // Offline fallback computation
-      const restaurants = db.getRestaurants();
-      const customers = db.getCustomers();
-      const orders = db.getOrders();
-      const completed = orders.filter((o) => o.status === 'Entregue');
-      const gmv = completed.reduce((sum, o) => sum + o.totalAmount, 0);
-      const platformRevenue = completed.reduce((sum, o) => {
-        const r = restaurants.find((rest) => rest.id === o.restaurantId);
-        const rate = r ? r.commissionRate : 12;
-        return sum + (o.totalAmount * rate) / 100 + o.serviceFee;
-      }, 0);
-      const avgTicket = completed.length > 0 ? gmv / completed.length : 0;
-
-      return {
-        total_gmv: Number(gmv.toFixed(2)),
-        platform_revenue: Number(platformRevenue.toFixed(2)),
-        total_orders: orders.length,
-        active_restaurants: restaurants.filter((r) => r.status === 'Ativo').length,
-        total_customers: customers.length,
-        average_ticket: Number(avgTicket.toFixed(2)),
-      };
+      // Fallback to starter metrics
     }
 
+    const restaurants = db.getRestaurants();
+    const customers = db.getCustomers();
+    const orders = db.getOrders();
+    const completed = orders.filter((o) => o.status === 'Entregue');
+    const gmv = completed.reduce((sum, o) => sum + o.totalAmount, 0);
+    const platformRevenue = completed.reduce((sum, o) => {
+      const r = restaurants.find((rest) => rest.id === o.restaurantId);
+      const rate = r ? r.commissionRate : 12;
+      return sum + (o.totalAmount * rate) / 100 + o.serviceFee;
+    }, 0);
+    const avgTicket = completed.length > 0 ? gmv / completed.length : 0;
+
     return {
-      total_gmv: 0,
-      platform_revenue: 0,
-      total_orders: 0,
-      active_restaurants: 0,
-      total_customers: 0,
-      average_ticket: 0,
+      total_gmv: Number(gmv.toFixed(2)),
+      platform_revenue: Number(platformRevenue.toFixed(2)),
+      total_orders: orders.length,
+      active_restaurants: restaurants.filter((r) => r.status === 'Ativo').length,
+      total_customers: customers.length,
+      average_ticket: Number(avgTicket.toFixed(2)),
     };
   },
 
@@ -122,7 +106,7 @@ export const reportService = {
     try {
       const data = await api.get<any>('/reports/admin/sales-by-category');
       const list = Array.isArray(data) ? data : (data?.items || data?.data);
-      if (Array.isArray(list)) {
+      if (Array.isArray(list) && list.length > 0) {
         return list.map((item) => ({
           category: item.category || item.category_name || item.name || 'Outros',
           revenue: Number(item.revenue ?? item.total_sales ?? item.total_amount ?? 0),
@@ -130,13 +114,8 @@ export const reportService = {
           percentage: item.percentage ? Number(item.percentage) : undefined,
         }));
       }
-      if (!isMockEnabled()) {
-        return [];
-      }
     } catch {
-      if (!isMockEnabled()) {
-        return [];
-      }
+      // Fallback to starter report
     }
 
     const report = this.generateReport({ period: '30days' });
@@ -155,7 +134,7 @@ export const reportService = {
     try {
       const data = await api.get<any>('/reports/admin/top-restaurants');
       const list = Array.isArray(data) ? data : (data?.items || data?.data);
-      if (Array.isArray(list)) {
+      if (Array.isArray(list) && list.length > 0) {
         return list.map((item) => ({
           id: item.id || item.restaurant_id || `rest-${Math.random()}`,
           name: item.name || item.restaurant_name || 'Restaurante',
@@ -163,13 +142,8 @@ export const reportService = {
           revenue: Number(item.revenue ?? item.total_revenue ?? 0),
         }));
       }
-      if (!isMockEnabled()) {
-        return [];
-      }
     } catch {
-      if (!isMockEnabled()) {
-        return [];
-      }
+      // Fallback to starter report
     }
 
     const report = this.generateReport({ period: '30days' });

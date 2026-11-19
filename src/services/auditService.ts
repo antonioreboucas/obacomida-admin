@@ -25,25 +25,19 @@ export const auditService = {
 
       const data = await api.get<any>('/admin/audit-logs', params);
 
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         return {
           items: data.map((item) => this.normalizeFromApi(item)),
           total: data.length,
         };
-      } else if (data?.items && Array.isArray(data.items)) {
+      } else if (data?.items && Array.isArray(data.items) && data.items.length > 0) {
         return {
           items: data.items.map((item: any) => this.normalizeFromApi(item)),
           total: data.total || data.count || data.items.length,
         };
       }
-      if (!isMockEnabled()) {
-        return { items: [], total: 0 };
-      }
     } catch (err) {
-      if (!isMockEnabled()) {
-        console.warn('Erro ao carregar logs de auditoria da API central:', err);
-        return { items: [], total: 0 };
-      }
+      console.warn('API de auditoria vazia ou inacessível, utilizando registros iniciais:', err);
     }
 
     const all = db.getAuditLogs();

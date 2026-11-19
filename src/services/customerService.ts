@@ -17,7 +17,7 @@ export const customerService = {
       });
 
       const list = Array.isArray(data) ? data : (data?.items || data?.data);
-      if (Array.isArray(list)) {
+      if (Array.isArray(list) && list.length > 0) {
         return list.map((item: any) => ({
           id: String(item.id),
           name: item.name || item.full_name || 'Cliente',
@@ -31,14 +31,8 @@ export const customerService = {
           avatar: item.avatar || item.avatar_url,
         }));
       }
-      if (!isMockEnabled()) {
-        return [];
-      }
     } catch (err) {
-      if (!isMockEnabled()) {
-        console.warn('Erro ao carregar clientes da API central:', err);
-        return [];
-      }
+      console.warn('API de clientes vazia ou inacessível, utilizando clientes iniciais:', err);
     }
 
     return this.getAll();

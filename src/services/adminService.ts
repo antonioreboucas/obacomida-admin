@@ -29,25 +29,19 @@ export const adminService = {
 
       const data = await api.get<any>('/admin/users', params);
 
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         return {
           items: data.map((item) => this.normalizeFromApi(item)),
           total: data.length,
         };
-      } else if (data?.items && Array.isArray(data.items)) {
+      } else if (data?.items && Array.isArray(data.items) && data.items.length > 0) {
         return {
           items: data.items.map((item: any) => this.normalizeFromApi(item)),
           total: data.total || data.count || data.items.length,
         };
       }
-      if (!isMockEnabled()) {
-        return { items: [], total: 0 };
-      }
     } catch (err) {
-      if (!isMockEnabled()) {
-        console.warn('Erro ao carregar usuários da API central:', err);
-        return { items: [], total: 0 };
-      }
+      console.warn('API de usuários vazia ou inacessível, utilizando usuários iniciais:', err);
     }
 
     const localUsers = this.getAll();

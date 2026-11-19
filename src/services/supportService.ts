@@ -22,17 +22,11 @@ export const supportService = {
       const data = await api.get<any>('/support/tickets', params);
       const list = Array.isArray(data) ? data : (data?.items || data?.data);
 
-      if (Array.isArray(list)) {
+      if (Array.isArray(list) && list.length > 0) {
         return list.map((item) => this.normalizeFromApi(item));
       }
-      if (!isMockEnabled()) {
-        return [];
-      }
     } catch (err) {
-      if (!isMockEnabled()) {
-        console.warn('Erro ao carregar chamados da API central:', err);
-        return [];
-      }
+      console.warn('API de chamados vazia ou inacessível, utilizando chamados iniciais:', err);
     }
 
     const all = db.getSupportTickets();
