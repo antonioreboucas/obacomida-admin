@@ -1,17 +1,30 @@
 import { db } from '../storage/db';
 import { api, isMockEnabled } from './api';
-import type { Restaurant, RestaurantStatus, AdminUser, StoreTheme, BackendRestaurantStatus } from '../types';
+import type {
+  Restaurant,
+  RestaurantStatus,
+  AdminUser,
+  StoreTheme,
+  BackendRestaurantStatus,
+} from '../types';
+import type {
+  RestaurantQueryParams,
+  CheckSlugResponse,
+  RestaurantDetail,
+  RestaurantListItem,
+} from '../types/api';
 import { generateSlug, sanitizeSlug, getStoreAppUrl, getStorePartnerUrl } from '../utils/slugUtils';
 
 const STATUS_TO_BACKEND: Record<string, BackendRestaurantStatus> = {
   Pendente: 'PENDING',
-  'Em análise': 'PENDING',
+  'Em análise': 'UNDER_REVIEW' as any,
   Aprovado: 'APPROVED',
   Ativo: 'ACTIVE',
   Pausado: 'PAUSED',
   Suspenso: 'SUSPENDED',
   Reprovado: 'REJECTED',
   PENDING: 'PENDING',
+  UNDER_REVIEW: 'UNDER_REVIEW' as any,
   APPROVED: 'APPROVED',
   ACTIVE: 'ACTIVE',
   PAUSED: 'PAUSED',
@@ -21,6 +34,7 @@ const STATUS_TO_BACKEND: Record<string, BackendRestaurantStatus> = {
 
 const BACKEND_TO_LEGACY: Record<string, RestaurantStatus> = {
   PENDING: 'Pendente',
+  UNDER_REVIEW: 'Em análise',
   APPROVED: 'Aprovado',
   ACTIVE: 'Ativo',
   PAUSED: 'Pausado',
@@ -30,29 +44,52 @@ const BACKEND_TO_LEGACY: Record<string, RestaurantStatus> = {
 
 export const restaurantService = {
   /**
-   * GET /api/v1/admin/restaurants?status=PENDING
-   * Lista restaurantes da fila administrativa com filtro por status
+   * GET /api/v1/admin/restaurants?status=&city=&search=&page=&per_page=
+   * Lista restaurantes da fila administrativa com paginação e filtros
    */
-  async fetchAdminRestaurants(statusFilter?: string): Promise<Restaurant[]> {
+  async fetchAdminRestaurants(
+    paramsOrStatus?: string | RestaurantQueryParams
+  ): Promise<any> {
+    const isParamObject = typeof paramsOrStatus === 'object';
+    const statusFilter = isParamObject ? paramsOrStatus?.status : paramsOrStatus;
+    const city = isParamObject ? paramsOrStatus?.city : undefined;
+    const search = isParamObject ? paramsOrStatus?.search : undefined;
+    const page = isParamObject ? paramsOrStatus?.page || 1 : 1;
+    const perPage = isParamObject ? paramsOrStatus?.per_page || 20 : 50;
+
     try {
-      const backendStatus = statusFilter && statusFilter !== 'all' ? STATUS_TO_BACKEND[statusFilter] || statusFilter : undefined;
-      const params = backendStatus ? { status: backendStatus } : undefined;
+      const backendStatus =
+        statusFilter && statusFilter !== 'all'
+          ? STATUS_TO_BACKEND[statusFilter] || statusFilter
+          : undefined;
+
+      const queryParams: Record<string, any> = { page, per_page: perPage };
+      if (backendStatus) queryParams.status = backendStatus;
+      if (city && city !== 'all') queryParams.city = city;
+      if (search) queryParams.search = search;
+
       let data: any = null;
       try {
-        data = await api.get<any>('/admin/restaurants', params);
+        data = await api.get<any>('/admin/restaurants', queryParams);
       } catch (adminErr: any) {
         if (adminErr?.status === 403 || adminErr?.status === 404) {
-          data = await api.get<any>('/restaurants', params);
+          data = await api.get<any>('/restaurants', queryParams);
         } else {
           throw adminErr;
         }
       }
 
-      const rawList = Array.isArray(data) ? data : (data?.items || data?.data);
-      const list = Array.isArray(rawList) ? rawList : (rawList?.items || []);
+      const rawList = Array.isArray(data) ? data : data?.items || data?.data;
+      const list = Array.isArray(rawList) ? rawList : rawList?.items || [];
+      const total = data?.total || (Array.isArray(data) ? data.length : list.length);
+
       if (Array.isArray(list)) {
         const mapped = list.map((item) => this.normalizeFromApi(item));
         db.saveRestaurants(mapped);
+
+        if (isParamObject) {
+          return { items: mapped, total, page, per_page: perPage };
+        }
         return mapped;
       }
     } catch (err) {
@@ -60,12 +97,32 @@ export const restaurantService = {
     }
 
     if (!isMockEnabled()) {
-      return [];
+      return isParamObject ? { items: [], total: 0, page, per_page: perPage } : [];
     }
 
     const all = db.getRestaurants();
-    if (!statusFilter || statusFilter === 'all') return all;
-    return all.filter((r) => r.status === statusFilter || STATUS_TO_BACKEND[r.status] === statusFilter);
+    const filtered = all.filter((r) => {
+      const matchStatus =
+        !statusFilter ||
+        statusFilter === 'all' ||
+        r.status === statusFilter ||
+        STATUS_TO_BACKEND[r.status] === statusFilter;
+      const matchCity = !city || city === 'all' || r.city.toLowerCase() === city.toLowerCase();
+      const matchSearch =
+        !search ||
+        r.name.toLowerCase().includes(search.toLowerCase()) ||
+        r.cnpj.includes(search) ||
+        r.slug.toLowerCase().includes(search.toLowerCase());
+      return matchStatus && matchCity && matchSearch;
+    });
+
+    const start = (page - 1) * perPage;
+    const paginated = filtered.slice(start, start + perPage);
+
+    if (isParamObject) {
+      return { items: paginated, total: filtered.length, page, per_page: perPage };
+    }
+    return filtered;
   },
 
   /**
@@ -89,7 +146,7 @@ export const restaurantService = {
 
   /**
    * PATCH /api/v1/admin/restaurants/{id}/status
-   * Payload: { status: "APPROVED" | "REJECTED" | "SUSPENDED" | "ACTIVE" }
+   * Payload: { status: "APPROVED" | "ACTIVE" | "PAUSED" | "SUSPENDED" | "REJECTED", reason?: string }
    */
   async updateStatusApi(
     id: string,
@@ -110,6 +167,85 @@ export const restaurantService = {
 
     // Update local DB and audit trail
     return this.updateStatus(id, newStatus, admin, reason);
+  },
+
+  /**
+   * GET /api/v1/admin/restaurants/check-slug?slug=exemplo&exclude_id=uuid
+   * Validação em tempo real se o slug está livre
+   */
+  async checkSlugApi(slug: string, excludeId?: string): Promise<CheckSlugResponse> {
+    const clean = sanitizeSlug(slug);
+    if (!clean || clean.length < 3) {
+      return { available: false, slug: clean, message: 'O link deve ter no mínimo 3 caracteres.' };
+    }
+
+    try {
+      const params: Record<string, string> = { slug: clean };
+      if (excludeId) params.exclude_id = excludeId;
+
+      const res = await api.get<any>('/admin/restaurants/check-slug', params);
+      const data: CheckSlugResponse = res?.data || res;
+      if (typeof data?.available === 'boolean') {
+        return data;
+      }
+    } catch (err) {
+      // Fallback local check
+    }
+
+    const available = this.isSlugAvailable(clean, excludeId);
+    return {
+      available,
+      slug: clean,
+      message: available ? 'Link disponível!' : 'Este link já está em uso por outro restaurante.',
+    };
+  },
+
+  /**
+   * PATCH /api/v1/admin/restaurants/{id}/slug
+   * Payload: { slug: string }
+   */
+  async updateSlugApi(
+    id: string,
+    newSlug: string,
+    admin: AdminUser
+  ): Promise<{ success: boolean; error?: string; restaurant?: Restaurant }> {
+    const clean = sanitizeSlug(newSlug);
+    if (!clean || clean.length < 3) {
+      return { success: false, error: 'O link deve ter no mínimo 3 caracteres.' };
+    }
+
+    try {
+      await api.patch(`/admin/restaurants/${id}/slug`, { slug: clean });
+    } catch (err: any) {
+      console.warn('Erro ao atualizar slug via API, aplicando fallback local:', err);
+    }
+
+    return this.updateSlug(id, clean, admin);
+  },
+
+  /**
+   * PATCH /api/v1/admin/restaurants/{id}/theme
+   * Payload: { theme: { primary_color, secondary_color, ... } }
+   */
+  async updateThemeApi(
+    id: string,
+    theme: StoreTheme,
+    admin: AdminUser
+  ): Promise<Restaurant | undefined> {
+    try {
+      await api.patch(`/admin/restaurants/${id}/theme`, {
+        theme: {
+          primary_color: theme.primaryColor,
+          secondary_color: theme.secondaryColor,
+          preset_key: theme.presetKey,
+          text_color: theme.textColor,
+        },
+      });
+    } catch (err) {
+      console.warn('Erro ao atualizar tema via API, aplicando fallback local:', err);
+    }
+
+    return this.updateTheme(id, theme, admin);
   },
 
   /**
@@ -143,6 +279,15 @@ export const restaurantService = {
     const rawRate = Number(item.commission_rate ?? item.commissionRate ?? 0.12);
     const commissionRate = rawRate <= 1 && rawRate > 0 ? Number((rawRate * 100).toFixed(1)) : rawRate;
 
+    const theme = item.theme
+      ? {
+          primaryColor: item.theme.primary_color || item.theme.primaryColor || '#ff6600',
+          secondaryColor: item.theme.secondary_color || item.theme.secondaryColor || '#ff8833',
+          presetKey: item.theme.preset_key || item.theme.presetKey,
+          textColor: item.theme.text_color || item.theme.textColor,
+        }
+      : undefined;
+
     return {
       id: String(item.id),
       name: rawName,
@@ -173,10 +318,11 @@ export const restaurantService = {
       deliveryTimeMax: Number(item.average_delivery_time_max ?? item.delivery_time_max ?? item.deliveryTimeMax ?? 45),
       deliveryFee: Number(item.delivery_fee ?? item.deliveryFee ?? 5.0),
       isOpen: item.is_open ?? item.isOpen ?? true,
-      theme: item.theme,
+      theme,
       history: Array.isArray(item.history) ? item.history : [],
     };
   },
+
   getAll(): Restaurant[] {
     return db.getRestaurants();
   },
@@ -361,3 +507,5 @@ export const restaurantService = {
     );
   },
 };
+
+export default restaurantService;

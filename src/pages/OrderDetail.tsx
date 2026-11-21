@@ -32,6 +32,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ orderId, onBack }) => 
   const { success, error } = useToast();
 
   const [order, setOrder] = useState<Order | undefined>(() => orderService.getById(orderId));
+  const [isLoadingApi, setIsLoadingApi] = useState(false);
 
   // Change Status Modal
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
@@ -47,9 +48,32 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ orderId, onBack }) => 
   const [occurrenceType, setOccurrenceType] = useState('Atraso no Preparo');
   const [occurrenceDesc, setOccurrenceDesc] = useState('');
 
-  const refreshOrder = () => {
-    setOrder(orderService.getById(orderId));
+  const refreshOrder = async () => {
+    try {
+      const live = await orderService.fetchOrderById(orderId);
+      if (live) setOrder(live);
+      else setOrder(orderService.getById(orderId));
+    } catch {
+      setOrder(orderService.getById(orderId));
+    }
   };
+
+  React.useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setIsLoadingApi(true);
+      try {
+        const live = await orderService.fetchOrderById(orderId);
+        if (mounted && live) setOrder(live);
+      } finally {
+        if (mounted) setIsLoadingApi(false);
+      }
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [orderId]);
 
   if (!order) {
     return (
@@ -81,25 +105,25 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ orderId, onBack }) => 
     }
   };
 
-  const handleUpdateStatus = (e: React.FormEvent) => {
+  const handleUpdateStatus = async (e: React.FormEvent) => {
     e.preventDefault();
-    orderService.updateStatus(order.id, newStatus, currentUser, statusNote);
+    await orderService.updateStatusApi(order.id, newStatus, currentUser, statusNote);
     success(`Status do pedido ${order.code} atualizado para "${newStatus}"!`);
     setIsStatusModalOpen(false);
     setStatusNote('');
-    refreshOrder();
+    await refreshOrder();
   };
 
-  const handleCancelOrder = () => {
+  const handleCancelOrder = async () => {
     if (!cancelReason.trim()) {
       error('Informe o motivo do cancelamento.');
       return;
     }
-    orderService.cancelOrder(order.id, cancelReason, currentUser);
+    await orderService.cancelOrderApi(order.id, cancelReason, currentUser);
     success(`Pedido ${order.code} cancelado com sucesso.`);
     setIsCancelOpen(false);
     setCancelReason('');
-    refreshOrder();
+    await refreshOrder();
   };
 
   const handleAddOccurrence = (e: React.FormEvent) => {

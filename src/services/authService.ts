@@ -1,6 +1,7 @@
 import { api, ApiError, isMockEnabled } from './api';
 import { db } from '../storage/db';
 import type { AdminUser, AdminRole } from '../types';
+import type { ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest } from '../types/api';
 
 export interface AuthLoginResponse {
   success: boolean;
@@ -34,6 +35,10 @@ export const authService = {
     });
   },
 
+  /**
+   * GET /api/v1/auth/me
+   * Retorna os dados do usuário autenticado e valida permissões ADMIN / SUPER_ADMIN
+   */
   async getMe(): Promise<AdminUser | null> {
     const token = api.getToken();
     if (!token) return null;
@@ -105,6 +110,10 @@ export const authService = {
     }
   },
 
+  /**
+   * POST /api/v1/auth/login
+   * Body: { email, password }
+   */
   async login(
     email: string,
     password?: string,
@@ -133,7 +142,7 @@ export const authService = {
 
           rawTokenData = await api.request<any>('/auth/login', {
             method: 'POST',
-            body: params.toString(),
+            data: params.toString(),
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
             },
@@ -259,7 +268,8 @@ export const authService = {
       const isNetworkError =
         err.status === 0 ||
         err.message?.includes('Falha de conexão') ||
-        err.message?.includes('Failed to fetch');
+        err.message?.includes('Failed to fetch') ||
+        err.message?.includes('Network Error');
 
       if (isNetworkError) {
         if (!isMockEnabled()) {
@@ -318,6 +328,34 @@ export const authService = {
     }
   },
 
+  /**
+   * POST /api/v1/auth/refresh
+   * Renova tokens JWT
+   */
+  async refresh(): Promise<boolean> {
+    const refreshToken = api.getRefreshToken();
+    if (!refreshToken) return false;
+
+    try {
+      const res = await api.post<any>('/auth/refresh', { refresh_token: refreshToken });
+      const data = res?.data || res;
+      if (data?.access_token) {
+        api.setToken(data.access_token);
+        if (data.refresh_token) {
+          api.setRefreshToken(data.refresh_token);
+        }
+        return true;
+      }
+      return false;
+    } catch {
+      api.clearToken();
+      return false;
+    }
+  },
+
+  /**
+   * POST /api/v1/auth/logout
+   */
   async logout(): Promise<void> {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(SESSION_KEY);
@@ -344,6 +382,54 @@ export const authService = {
     });
   },
 
+  /**
+   * POST /api/v1/auth/change-password
+   */
+  async changePassword(data: ChangePasswordRequest): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await api.post<any>('/auth/change-password', data);
+      return {
+        success: true,
+        message: res?.message || 'Senha alterada com sucesso.',
+      };
+    } catch (err: any) {
+      throw new Error(err.message || 'Falha ao alterar senha.');
+    }
+  },
+
+  /**
+   * POST /api/v1/auth/forgot-password
+   */
+  async forgotPassword(data: ForgotPasswordRequest): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await api.post<any>('/auth/forgot-password', data);
+      return {
+        success: true,
+        message: res?.message || `Instruções de recuperação enviadas para ${data.email}.`,
+      };
+    } catch (err: any) {
+      return {
+        success: true,
+        message: `Instruções de recuperação enviadas para ${data.email}.`,
+      };
+    }
+  },
+
+  /**
+   * POST /api/v1/auth/reset-password
+   */
+  async resetPassword(data: ResetPasswordRequest): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await api.post<any>('/auth/reset-password', data);
+      return {
+        success: true,
+        message: res?.message || 'Senha redefinida com sucesso.',
+      };
+    } catch (err: any) {
+      throw new Error(err.message || 'Falha ao redefinir senha.');
+    }
+  },
+
   normalizeRole(role?: string): AdminRole {
     if (!role) return 'admin';
     const upper = String(role).toUpperCase().replace(/-/g, '_');
@@ -357,14 +443,7 @@ export const authService = {
   },
 
   recoverPassword(email: string): Promise<{ success: boolean; message: string }> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          success: true,
-          message: `Instruções de redefinição de senha enviadas com sucesso para ${email}.`,
-        });
-      }, 400);
-    });
+    return this.forgotPassword({ email });
   },
 
   hasPermission(
@@ -398,3 +477,5 @@ export const authService = {
     return false;
   },
 };
+
+export default authService;

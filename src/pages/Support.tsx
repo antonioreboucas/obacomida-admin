@@ -141,9 +141,22 @@ export const SupportPage: React.FC = () => {
     }
   };
 
-  const handleUpdateStatus = (newStatus: TicketStatus) => {
+  const handleUpdateStatus = async (newStatus: TicketStatus) => {
     if (!activeTicket) return;
-    const updated = supportService.updateStatus(activeTicket.id, newStatus, currentUser);
+    const backendStatus =
+      newStatus === 'Aberto'
+        ? 'OPEN'
+        : newStatus === 'Em atendimento'
+        ? 'IN_PROGRESS'
+        : newStatus === 'Resolvido'
+        ? 'RESOLVED'
+        : 'CLOSED';
+
+    const updated = await supportService.updateTicketApi(
+      activeTicket.id,
+      { status: backendStatus as any },
+      currentUser
+    );
     success(`Status do chamado alterado para "${newStatus}".`);
     refreshList();
     if (updated) setActiveTicket(updated);

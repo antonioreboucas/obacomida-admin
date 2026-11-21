@@ -1,32 +1,59 @@
 import { db } from '../storage/db';
 import { api, isMockEnabled } from './api';
 import type { SupportTicket, TicketStatus, TicketPriority, AdminUser, RequesterType } from '../types';
+import type { SupportTicketStatus, SupportTicketPriority, UpdateSupportTicketRequest } from '../types/api';
+
+const STATUS_MAP: Record<string, SupportTicketStatus> = {
+  Aberto: 'OPEN',
+  'Em atendimento': 'IN_PROGRESS',
+  'Aguardando resposta': 'IN_PROGRESS',
+  Resolvido: 'RESOLVED',
+  Encerrado: 'CLOSED',
+  OPEN: 'OPEN',
+  IN_PROGRESS: 'IN_PROGRESS',
+  RESOLVED: 'RESOLVED',
+  CLOSED: 'CLOSED',
+};
+
+const LEGACY_STATUS_MAP: Record<string, TicketStatus> = {
+  OPEN: 'Aberto',
+  IN_PROGRESS: 'Em atendimento',
+  RESOLVED: 'Resolvido',
+  CLOSED: 'Encerrado',
+};
 
 export const supportService = {
   /**
-   * GET /api/v1/support/tickets?status=OPEN
-   * Lista chamados de suporte por status
+   * GET /api/v1/support?status=OPEN
+   * Lista todos os chamados abertos por clientes e parceiros
    */
   async fetchTickets(statusFilter?: string): Promise<SupportTicket[]> {
     try {
       const backendStatus =
-        statusFilter === 'all'
-          ? undefined
-          : statusFilter === 'Aberto'
-          ? 'OPEN'
-          : statusFilter === 'Encerrado' || statusFilter === 'Resolvido'
-          ? 'CLOSED'
-          : statusFilter || 'OPEN';
+        statusFilter && statusFilter !== 'all'
+          ? STATUS_MAP[statusFilter] || statusFilter
+          : undefined;
 
       const params = backendStatus ? { status: backendStatus } : undefined;
-      const data = await api.get<any>('/support/tickets', params);
-      const list = Array.isArray(data) ? data : (data?.items || data?.data);
+      let data: any = null;
+      try {
+        data = await api.get<any>('/support', params);
+      } catch (err: any) {
+        if (err?.status === 404) {
+          data = await api.get<any>('/support/tickets', params);
+        } else {
+          throw err;
+        }
+      }
 
+      const list = Array.isArray(data) ? data : (data?.items || data?.data);
       if (Array.isArray(list)) {
-        return list.map((item) => this.normalizeFromApi(item));
+        const mapped = list.map((item) => this.normalizeFromApi(item));
+        db.saveSupportTickets(mapped);
+        return mapped;
       }
     } catch (err) {
-      console.warn('API de chamados inacessível ou sem permissão:', err);
+      console.warn('API /support inacessível ou sem permissão:', err);
     }
 
     if (!isMockEnabled()) {
@@ -35,12 +62,38 @@ export const supportService = {
 
     const all = db.getSupportTickets();
     if (!statusFilter || statusFilter === 'all') return all;
-    return all.filter((t) => t.status === statusFilter);
+    return all.filter((t) => t.status === statusFilter || STATUS_MAP[t.status] === statusFilter);
   },
 
   /**
-   * PATCH /api/v1/support/tickets/{id}/reply
-   * Payload: { message: "..." }
+   * PATCH /api/v1/support/{ticket_id}
+   * Body: { status: TicketStatus, priority?: "LOW"|"MEDIUM"|"HIGH"|"URGENT", resolution_notes?: string }
+   */
+  async updateTicketApi(
+    ticketId: string,
+    payload: UpdateSupportTicketRequest,
+    admin: AdminUser
+  ): Promise<SupportTicket | undefined> {
+    try {
+      try {
+        await api.patch(`/support/${ticketId}`, payload);
+      } catch (err: any) {
+        if (err?.status === 404) {
+          await api.patch(`/support/tickets/${ticketId}`, payload);
+        } else {
+          throw err;
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao atualizar ticket via PATCH /support/{id}, aplicando fallback:', err);
+    }
+
+    const legacyStatus = LEGACY_STATUS_MAP[payload.status] || (payload.status as any);
+    return this.updateStatus(ticketId, legacyStatus, admin, payload.resolution_notes);
+  },
+
+  /**
+   * PATCH /api/v1/support/{ticket_id}/reply
    */
   async replyTicket(
     ticketId: string,
@@ -48,31 +101,30 @@ export const supportService = {
     admin: AdminUser
   ): Promise<SupportTicket | undefined> {
     try {
-      await api.patch(`/support/tickets/${ticketId}/reply`, {
-        message,
-      });
-    } catch (err) {
-      console.warn('Erro ao responder chamado via API, aplicando fallback local:', err);
+      await api.patch(`/support/${ticketId}/reply`, { message });
+    } catch {
+      try {
+        await api.patch(`/support/tickets/${ticketId}/reply`, { message });
+      } catch (err) {
+        console.warn('Erro ao responder chamado via API, aplicando fallback local:', err);
+      }
     }
 
     return this.addMessage(ticketId, message, admin);
   },
 
   /**
-   * PATCH /api/v1/support/tickets/{id}/close
    * Encerra o chamado
    */
   async closeTicket(
     ticketId: string,
     admin: AdminUser
   ): Promise<SupportTicket | undefined> {
-    try {
-      await api.patch(`/support/tickets/${ticketId}/close`);
-    } catch (err) {
-      console.warn('Erro ao encerrar chamado via API, aplicando fallback local:', err);
-    }
-
-    return this.updateStatus(ticketId, 'Encerrado', admin, 'Chamado finalizado e encerrado pelo suporte');
+    return this.updateTicketApi(
+      ticketId,
+      { status: 'CLOSED', resolution_notes: 'Chamado encerrado pelo suporte' },
+      admin
+    );
   },
 
   getAll(): SupportTicket[] {
@@ -98,9 +150,8 @@ export const supportService = {
 
     const updated: SupportTicket = {
       ...ticket,
-      status: ticket.status === 'Aberto' ? 'Em atendimento' : ticket.status,
-      assignedTo: admin.name,
       messages: [...ticket.messages, newMessage],
+      status: ticket.status === 'Aberto' ? 'Em atendimento' : ticket.status,
     };
 
     db.saveSupportTickets(tickets.map((t) => (t.id === ticketId ? updated : t)));
@@ -109,10 +160,10 @@ export const supportService = {
       adminId: admin.id,
       adminName: admin.name,
       adminRole: String(admin.role),
-      action: 'Envio de resposta no chamado de suporte',
+      action: 'Resposta em chamado de suporte',
       module: 'Suporte',
       entityId: ticket.code,
-      details: `Nova resposta enviada no chamado ${ticket.code} (${ticket.subject})`,
+      details: `Resposta enviada no chamado #${ticket.code}`,
     });
 
     return updated;
@@ -139,10 +190,10 @@ export const supportService = {
       adminId: admin.id,
       adminName: admin.name,
       adminRole: String(admin.role),
-      action: 'Alteração de status de chamado de suporte',
+      action: 'Alteração de status do chamado',
       module: 'Suporte',
       entityId: ticket.code,
-      details: `Chamado ${ticket.code} alterado para "${newStatus}". ${note || ''}`,
+      details: `Chamado #${ticket.code} alterado para "${newStatus}". ${note ? `Nota: ${note}` : ''}`,
       previousValue: ticket.status,
       currentValue: newStatus,
     });
@@ -159,48 +210,47 @@ export const supportService = {
     const ticket = tickets.find((t) => t.id === ticketId);
     if (!ticket) return undefined;
 
-    const updated: SupportTicket = { ...ticket, priority: newPriority };
+    const updated: SupportTicket = {
+      ...ticket,
+      priority: newPriority,
+    };
+
     db.saveSupportTickets(tickets.map((t) => (t.id === ticketId ? updated : t)));
 
     db.logAudit({
       adminId: admin.id,
       adminName: admin.name,
       adminRole: String(admin.role),
-      action: 'Alteração de prioridade de chamado de suporte',
+      action: 'Alteração de prioridade do chamado',
       module: 'Suporte',
       entityId: ticket.code,
-      details: `Chamado ${ticket.code} prioridade alterada para "${newPriority}"`,
+      details: `Prioridade do chamado #${ticket.code} alterada para "${newPriority}"`,
     });
 
     return updated;
   },
 
   normalizeFromApi(item: any): SupportTicket {
-    const statusMap: Record<string, TicketStatus> = {
-      OPEN: 'Aberto',
-      IN_PROGRESS: 'Em atendimento',
-      WAITING: 'Aguardando resposta',
-      RESOLVED: 'Resolvido',
-      CLOSED: 'Encerrado',
-    };
+    const rawStatus = item.status || 'OPEN';
+    const legacyStatus = LEGACY_STATUS_MAP[rawStatus] || rawStatus;
 
     return {
       id: String(item.id),
       code: item.code || `#TK-${String(item.id).slice(-4)}`,
       requesterName: item.requester_name || item.requesterName || 'Usuário',
-      requesterEmail: item.requester_email || item.requesterEmail || 'contato@obacomida.com.br',
-      requesterType: (item.requester_type || item.requesterType || 'Cliente') as RequesterType,
-      subject: item.subject || 'Dúvida operacional',
-      category: item.category || 'Atendimento Geral',
+      requesterEmail: item.requester_email || item.requesterEmail || 'usuario@email.com',
+      requesterType: item.requester_type || item.requesterType || 'Cliente',
+      subject: item.subject || 'Atendimento ao Cliente',
+      category: item.category || 'Geral',
       createdAt: item.created_at || item.createdAt || new Date().toISOString(),
       assignedTo: item.assigned_to || item.assignedTo || 'Equipe de Suporte',
-      priority: (item.priority || 'Média') as TicketPriority,
-      status: statusMap[item.status] || item.status || 'Aberto',
+      priority: item.priority || 'Média',
+      status: legacyStatus,
       messages: Array.isArray(item.messages)
         ? item.messages.map((m: any) => ({
             id: String(m.id || Math.random()),
             sender: m.sender || 'Atendente',
-            isStaff: Boolean(m.is_staff ?? m.isStaff ?? false),
+            isStaff: Boolean(m.is_staff ?? m.isStaff),
             timestamp: m.timestamp || new Date().toISOString(),
             text: m.text || m.message || '',
           }))
@@ -208,3 +258,5 @@ export const supportService = {
     };
   },
 };
+
+export default supportService;

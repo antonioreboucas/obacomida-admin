@@ -1,6 +1,12 @@
 import { db } from '../storage/db';
 import { api, isMockEnabled } from './api';
 import type { FinancialRecord, PayoutStatus, AdminUser, FinancialCommission, FinancialTransaction } from '../types';
+import type {
+  CommissionPolicy,
+  CreateCommissionRequest,
+  LedgerTransaction,
+  FinancialTransactionsQueryParams,
+} from '../types/api';
 
 export interface FinancialSummary {
   grossVolume: number;
@@ -17,6 +23,93 @@ export interface FinancialSummary {
 }
 
 export const financialService = {
+  /**
+   * GET /api/v1/admin/commissions
+   * Lista todas as políticas de comissões cadastradas
+   */
+  async fetchCommissionPolicies(): Promise<CommissionPolicy[]> {
+    try {
+      const data = await api.get<any>('/admin/commissions');
+      const list = Array.isArray(data) ? data : data?.items || data?.data;
+      if (Array.isArray(list)) {
+        return list.map((item) => ({
+          id: item.id || `pol-${Date.now()}`,
+          restaurant_id: item.restaurant_id ?? null,
+          restaurant_name: item.restaurant_name,
+          percentage: Number(item.percentage ?? 12.5),
+          fixed_fee: Number(item.fixed_fee ?? 0),
+          service_fee: Number(item.service_fee ?? 2.0),
+          created_at: item.created_at || new Date().toISOString(),
+        }));
+      }
+    } catch (err) {
+      console.warn('API /admin/commissions inacessível:', err);
+    }
+
+    // Default fallback
+    const settings = db.getSettings();
+    return [
+      {
+        id: 'global-default',
+        restaurant_id: null,
+        restaurant_name: 'Padrão da Plataforma (Global)',
+        percentage: settings.defaultCommissionRate || 12.5,
+        fixed_fee: settings.defaultFixedFee || 0.0,
+        service_fee: settings.defaultServiceFeeRate || 2.0,
+        created_at: new Date().toISOString(),
+      },
+    ];
+  },
+
+  /**
+   * POST /api/v1/admin/commissions
+   * Cadastra nova regra de comissão (global ou para restaurante específico)
+   */
+  async createCommissionPolicy(
+    payload: CreateCommissionRequest,
+    admin: AdminUser
+  ): Promise<CommissionPolicy> {
+    try {
+      const res = await api.post<any>('/admin/commissions', payload);
+      const data = res?.data || res;
+      if (data) {
+        db.logAudit({
+          adminId: admin.id,
+          adminName: admin.name,
+          adminRole: String(admin.role),
+          action: 'Criação de política de comissão',
+          module: 'Financeiro',
+          entityId: data.id || 'commission-policy',
+          details: `Política de comissão criada: ${payload.percentage}% + R$ ${payload.fixed_fee} fixo + R$ ${payload.service_fee} taxa`,
+        });
+        return data;
+      }
+    } catch (err) {
+      console.warn('Erro ao salvar comissão via API, usando fallback:', err);
+    }
+
+    const created: CommissionPolicy = {
+      id: `comm-${Date.now()}`,
+      restaurant_id: payload.restaurant_id,
+      percentage: payload.percentage,
+      fixed_fee: payload.fixed_fee,
+      service_fee: payload.service_fee,
+      created_at: new Date().toISOString(),
+    };
+
+    db.logAudit({
+      adminId: admin.id,
+      adminName: admin.name,
+      adminRole: String(admin.role),
+      action: 'Criação de política de comissão (local)',
+      module: 'Financeiro',
+      entityId: created.id!,
+      details: `Política criada: ${payload.percentage}% para ${payload.restaurant_id || 'Global'}`,
+    });
+
+    return created;
+  },
+
   /**
    * GET /api/v1/financial/commissions?restaurant_id=&is_settled=
    * Relatório de comissões retidas e repasses por loja
@@ -41,7 +134,6 @@ export const financialService = {
     }
 
     const records = db.getFinancialRecords();
-    const restaurants = db.getRestaurants();
 
     return records
       .filter((r) => {
@@ -121,49 +213,83 @@ export const financialService = {
 
   /**
    * GET /api/v1/financial/transactions
-   * Histórico de transações financeiras globais
+   * Extrato do Ledger financeiro (order_id, gross_sales, platform_commission, service_fee, etc.)
    */
-  async fetchTransactions(): Promise<FinancialTransaction[]> {
+  async fetchTransactions(
+    params?: FinancialTransactionsQueryParams
+  ): Promise<any> {
     try {
-      const data = await api.get<any>('/financial/transactions');
+      const queryParams: Record<string, any> = {};
+      if (params?.restaurant_id && params.restaurant_id !== 'all') queryParams.restaurant_id = params.restaurant_id;
+      if (params?.status && params.status !== 'all') queryParams.status = params.status;
+      if (params?.start_date) queryParams.start_date = params.start_date;
+      if (params?.end_date) queryParams.end_date = params.end_date;
+      if (params?.page) queryParams.page = params.page;
+      if (params?.per_page) queryParams.per_page = params.per_page;
+
+      const data = await api.get<any>('/financial/transactions', queryParams);
       const list = Array.isArray(data) ? data : (data?.items || data?.data);
       if (Array.isArray(list)) {
-        return list.map((t) => ({
+        const mapped: LedgerTransaction[] = list.map((t) => ({
           id: String(t.id),
-          order_id: t.order_id || t.orderId,
-          restaurant_id: t.restaurant_id || t.restaurantId,
+          order_id: t.order_id || t.orderId || `ord-${Math.random()}`,
+          order_code: t.order_code || t.orderCode,
+          restaurant_id: t.restaurant_id || t.restaurantId || 'rest-1',
           restaurant_name: t.restaurant_name || t.restaurantName || 'Restaurante',
-          type: t.type || 'COMMISSION',
-          amount: Number(t.amount ?? 0),
-          status: t.status || 'COMPLETED',
-          payment_method: t.payment_method || t.paymentMethod || 'Pix',
+          gross_sales: Number(t.gross_sales ?? t.grossAmount ?? t.amount ?? 0),
+          platform_commission: Number(t.platform_commission ?? t.commissionAmount ?? 0),
+          service_fee: Number(t.service_fee ?? t.serviceFee ?? 2.0),
+          delivery_fee: Number(t.delivery_fee ?? t.deliveryFee ?? 0),
+          discounts: Number(t.discounts ?? 0),
+          refunds: Number(t.refunds ?? 0),
+          restaurant_net_amount: Number(t.restaurant_net_amount ?? t.netAmount ?? 0),
+          status: t.status || 'SETTLED',
           created_at: t.created_at || t.createdAt || new Date().toISOString(),
-          description: t.description || 'Transação financeira',
+          settled_at: t.settled_at || t.payoutDate,
         }));
+
+        if (params?.page || params?.per_page) {
+          return { items: mapped, total: data?.total || mapped.length };
+        }
+        return mapped;
       }
       if (!isMockEnabled()) {
-        return [];
+        return params?.page ? { items: [], total: 0 } : [];
       }
     } catch (err) {
       if (!isMockEnabled()) {
         console.warn('Erro ao carregar transações da API central:', err);
-        return [];
+        return params?.page ? { items: [], total: 0 } : [];
       }
     }
 
     const orders = db.getOrders();
-    return orders.slice(0, 30).map((o) => ({
-      id: `tx-${o.id}`,
-      order_id: o.id,
-      restaurant_id: o.restaurantId,
-      restaurant_name: o.restaurantName,
-      type: 'COMMISSION',
-      amount: Number(((o.totalAmount * 12) / 100).toFixed(2)),
-      status: o.status === 'Cancelado' ? 'FAILED' : 'COMPLETED',
-      payment_method: o.paymentMethod,
-      created_at: o.createdAt,
-      description: `Retenção de comissão ref. pedido ${o.code}`,
-    }));
+    const fallbackLedger: LedgerTransaction[] = orders.slice(0, 30).map((o) => {
+      const gross = o.totalAmount;
+      const comm = Number(((gross * 12) / 100).toFixed(2));
+      const sFee = o.serviceFee || 2.0;
+      return {
+        id: `tx-${o.id}`,
+        order_id: o.id,
+        order_code: o.code,
+        restaurant_id: o.restaurantId,
+        restaurant_name: o.restaurantName,
+        gross_sales: gross,
+        platform_commission: comm,
+        service_fee: sFee,
+        delivery_fee: o.deliveryFee,
+        discounts: o.discount,
+        refunds: 0,
+        restaurant_net_amount: Number((gross - comm - sFee).toFixed(2)),
+        status: o.status === 'Cancelado' ? 'CANCELLED' : 'SETTLED',
+        created_at: o.createdAt,
+      };
+    });
+
+    if (params?.page || params?.per_page) {
+      return { items: fallbackLedger, total: fallbackLedger.length };
+    }
+    return fallbackLedger;
   },
 
   getAll(): FinancialRecord[] {
@@ -231,86 +357,22 @@ export const financialService = {
     };
   },
 
-  updatePayoutStatus(
-    id: string,
-    newStatus: PayoutStatus,
-    admin: AdminUser,
-    notes?: string
-  ): FinancialRecord | undefined {
-    const records = db.getFinancialRecords();
-    const record = records.find((r) => r.id === id);
-    if (!record) return undefined;
-
-    const updated: FinancialRecord = {
-      ...record,
-      payoutStatus: newStatus,
-      payoutDate: newStatus === 'Pago' ? new Date().toISOString() : record.payoutDate,
-    };
-
-    db.saveFinancialRecords(records.map((r) => (r.id === id ? updated : r)));
-
-    db.logAudit({
-      adminId: admin.id,
-      adminName: admin.name,
-      adminRole: String(admin.role),
-      action: 'Alteração de status de repasse financeiro',
-      module: 'Financeiro',
-      entityId: record.id,
-      details: `Repasse ref. pedido ${record.orderCode} para ${record.restaurantName} alterado para "${newStatus}". ${notes || ''}`,
-      previousValue: record.payoutStatus,
-      currentValue: newStatus,
-    });
-
-    return updated;
-  },
-
-  batchProcessPayouts(restaurantId: string | undefined, admin: AdminUser): number {
-    const records = db.getFinancialRecords();
-    let count = 0;
-
-    const updatedRecords = records.map((rec) => {
-      if ((!restaurantId || rec.restaurantId === restaurantId) && rec.payoutStatus === 'Pendente') {
-        count++;
-        return {
-          ...rec,
-          payoutStatus: 'Processado' as PayoutStatus,
-        };
-      }
-      return rec;
-    });
-
-    db.saveFinancialRecords(updatedRecords);
-
-    db.logAudit({
-      adminId: admin.id,
-      adminName: admin.name,
-      adminRole: String(admin.role),
-      action: 'Processamento em lote de repasses',
-      module: 'Financeiro',
-      entityId: restaurantId || 'global',
-      details: `Lote de ${count} lançamentos financeiros transferidos de Pendente para Processado`,
-    });
-
-    return count;
-  },
-
   normalizeCommission(item: any): FinancialCommission {
-    const rate = Number(item.commission_rate ?? item.commissionRate ?? 0.12);
-    const commission_rate = rate <= 1 && rate > 0 ? Number((rate * 100).toFixed(1)) : rate;
-
     return {
       id: String(item.id),
-      restaurant_id: item.restaurant_id || item.restaurantId || 'rest-1',
+      restaurant_id: item.restaurant_id || item.restaurantId,
       restaurant_name: item.restaurant_name || item.restaurantName || 'Restaurante',
-      order_id: item.order_id || item.orderId || '',
-      order_code: item.order_code || item.orderCode || `#OBA-${String(item.order_id || '').slice(-4)}`,
-      order_amount: Number(item.order_amount ?? item.gross_amount ?? item.grossAmount ?? 0),
-      commission_rate,
-      commission_amount: Number(item.commission_amount ?? item.commissionAmount ?? 0),
-      net_amount: Number(item.net_amount ?? item.netAmount ?? 0),
-      is_settled: Boolean(item.is_settled ?? item.isSettled ?? false),
+      order_id: item.order_id || item.orderId,
+      order_code: item.order_code || item.orderCode || '#OBA-0000',
+      order_amount: Number(item.order_amount ?? item.orderAmount ?? item.gross_sales ?? 0),
+      commission_rate: Number(item.commission_rate ?? item.commissionRate ?? 12.0),
+      commission_amount: Number(item.commission_amount ?? item.commissionAmount ?? item.platform_commission ?? 0),
+      net_amount: Number(item.net_amount ?? item.netAmount ?? item.restaurant_net_amount ?? 0),
+      is_settled: item.is_settled ?? item.isSettled ?? false,
       settled_at: item.settled_at || item.settledAt,
       created_at: item.created_at || item.createdAt || new Date().toISOString(),
     };
   },
 };
+
+export default financialService;

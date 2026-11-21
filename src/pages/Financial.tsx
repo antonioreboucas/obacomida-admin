@@ -156,8 +156,17 @@ export const FinancialPage: React.FC = () => {
     }
   };
 
-  const handleSaveDefaultCommissions = (e: React.FormEvent) => {
+  const handleSaveDefaultCommissions = async (e: React.FormEvent) => {
     e.preventDefault();
+    await financialService.createCommissionPolicy(
+      {
+        restaurant_id: null,
+        percentage: Number(defaultCommission),
+        fixed_fee: Number(defaultFixed),
+        service_fee: Number(defaultService),
+      },
+      currentUser
+    );
     settingsService.update(
       {
         defaultCommissionRate: Number(defaultCommission),
@@ -168,6 +177,7 @@ export const FinancialPage: React.FC = () => {
     );
     success('Parâmetros globais de taxas e comissões atualizados!');
     setIsConfigOpen(false);
+    refreshList();
   };
 
   return (

@@ -69,22 +69,39 @@ export const StoreLinksModal: React.FC<StoreLinksModalProps> = ({
     setTimeout(() => setCopiedPartner(false), 2000);
   };
 
-  const handleSlugChange = (val: string) => {
+  const [isCheckingSlug, setIsCheckingSlug] = useState(false);
+
+  const handleSlugChange = async (val: string) => {
     const sanitized = sanitizeSlug(val);
     setNewSlug(sanitized);
     if (!sanitized || sanitized.length < 3) {
       setSlugError('O identificador deve conter ao menos 3 caracteres.');
-    } else if (!restaurantService.isSlugAvailable(sanitized, restaurant.id)) {
-      setSlugError(`O identificador "${sanitized}" já está em uso por outro parceiro.`);
-    } else {
-      setSlugError('');
+      return;
+    }
+
+    setIsCheckingSlug(true);
+    try {
+      const res = await restaurantService.checkSlugApi(sanitized, restaurant.id);
+      if (!res.available) {
+        setSlugError(res.message || `O link "${sanitized}" já está em uso por outro parceiro.`);
+      } else {
+        setSlugError('');
+      }
+    } catch {
+      if (!restaurantService.isSlugAvailable(sanitized, restaurant.id)) {
+        setSlugError(`O link "${sanitized}" já está em uso por outro parceiro.`);
+      } else {
+        setSlugError('');
+      }
+    } finally {
+      setIsCheckingSlug(false);
     }
   };
 
-  const handleSaveSlug = (e: React.FormEvent) => {
+  const handleSaveSlug = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser) return;
-    const res = restaurantService.updateSlug(restaurant.id, newSlug, currentUser);
+    if (!currentUser || slugError || isCheckingSlug) return;
+    const res = await restaurantService.updateSlugApi(restaurant.id, newSlug, currentUser);
     if (!res.success) {
       error(res.error || 'Erro ao atualizar o link da loja.');
       return;

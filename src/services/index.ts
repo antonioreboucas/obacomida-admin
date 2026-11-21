@@ -12,3 +12,7 @@ export { supportService } from './supportService';
 export { reportService } from './reportService';
 export { auditService } from './auditService';
 export { settingsService } from './settingsService';
+export { dashboardService } from './dashboardService';
+export { uploadService } from './uploadService';
+export { api, ApiError, isMockEnabled } from './api';
+

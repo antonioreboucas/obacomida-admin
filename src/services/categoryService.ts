@@ -1,20 +1,22 @@
 import { db } from '../storage/db';
 import { api, isMockEnabled } from './api';
 import type { Category, AdminUser } from '../types';
+import type { CreateCategoryRequest, UpdateCategoryRequest } from '../types/api';
+import { uploadService } from './uploadService';
 
 export const categoryService = {
   /**
-   * GET /api/v1/categories/global
-   * Lista todas as categorias globais do marketplace
+   * GET /api/v1/categories
+   * Lista todas as categorias globais públicas do marketplace
    */
-  async fetchGlobal(): Promise<Category[]> {
+  async fetchCategories(): Promise<Category[]> {
     try {
       let data: any = null;
       try {
-        data = await api.get<any>('/categories/global');
+        data = await api.get<any>('/categories');
       } catch (catErr: any) {
         if (catErr?.status === 404 || catErr?.status === 403) {
-          data = await api.get<any>('/categories');
+          data = await api.get<any>('/categories/global');
         } else {
           throw catErr;
         }
@@ -38,6 +40,11 @@ export const categoryService = {
     return this.getAll();
   },
 
+  // Backwards compatible alias
+  async fetchGlobal(): Promise<Category[]> {
+    return this.fetchCategories();
+  },
+
   getAll(): Category[] {
     return db.getCategories().sort((a, b) => a.displayOrder - b.displayOrder);
   },
@@ -47,34 +54,45 @@ export const categoryService = {
   },
 
   /**
-   * POST /api/v1/categories/global
+   * POST /api/v1/admin/categories
    * Cadastra nova categoria global no marketplace
+   * Body: { name, slug?, description?, image_url?, is_active: true, display_order: 0 }
    */
   async createApi(
-    data: {
-      name: string;
-      slug: string;
-      description?: string;
-      icon_url?: string;
-      sort_order?: number;
-      is_active?: boolean;
-    },
+    data: CreateCategoryRequest & { icon_url?: string; sort_order?: number },
     admin: AdminUser
   ): Promise<Category> {
-    const sort_order = data.sort_order ?? db.getCategories().length + 1;
-    const is_active = data.is_active ?? true;
+    const displayOrder = data.display_order ?? data.sort_order ?? db.getCategories().length + 1;
+    const isActive = data.is_active ?? true;
+    const imageUrl = data.image_url || data.icon_url || '';
 
     let createdId = `cat-${Date.now()}`;
 
     try {
-      const res = await api.post<any>('/categories/global', {
-        name: data.name,
-        slug: data.slug,
-        description: data.description || '',
-        icon_url: data.icon_url || '',
-        sort_order,
-        is_active,
-      });
+      let res: any = null;
+      try {
+        res = await api.post<any>('/admin/categories', {
+          name: data.name,
+          slug: data.slug,
+          description: data.description || '',
+          image_url: imageUrl,
+          is_active: isActive,
+          display_order: displayOrder,
+        });
+      } catch (errAdmin: any) {
+        if (errAdmin?.status === 404) {
+          res = await api.post<any>('/categories/global', {
+            name: data.name,
+            slug: data.slug,
+            description: data.description || '',
+            icon_url: imageUrl,
+            sort_order: displayOrder,
+            is_active: isActive,
+          });
+        } else {
+          throw errAdmin;
+        }
+      }
 
       if (res?.id) {
         createdId = String(res.id);
@@ -86,14 +104,14 @@ export const categoryService = {
     const newCategory: Category = {
       id: createdId,
       name: data.name,
-      slug: data.slug,
+      slug: data.slug || data.name.toLowerCase().replace(/\s+/g, '-'),
       icon: 'Utensils',
-      icon_url: data.icon_url,
-      image: data.icon_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&auto=format&fit=crop&q=80',
-      displayOrder: sort_order,
-      sort_order,
-      active: is_active,
-      is_active,
+      icon_url: imageUrl,
+      image: imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&auto=format&fit=crop&q=80',
+      displayOrder: displayOrder,
+      sort_order: displayOrder,
+      active: isActive,
+      is_active: isActive,
       productsCount: 0,
       description: data.description,
     };
@@ -116,8 +134,8 @@ export const categoryService = {
   },
 
   /**
-   * PUT /api/v1/categories/{id}
-   * Atualiza categoria global existente
+   * PUT /api/v1/admin/categories/{category_id}
+   * Atualiza dados, ordem de exibição e imagem da categoria
    */
   async updateApi(
     id: string,
@@ -125,14 +143,28 @@ export const categoryService = {
     admin: AdminUser
   ): Promise<Category | undefined> {
     try {
-      await api.put(`/categories/${id}`, {
+      const payload: UpdateCategoryRequest = {
         name: updates.name,
         slug: updates.slug,
         description: updates.description,
-        icon_url: updates.icon_url || updates.image,
-        sort_order: updates.sort_order ?? updates.displayOrder,
+        image_url: updates.image || updates.icon_url,
         is_active: updates.is_active ?? updates.active,
-      });
+        display_order: updates.sort_order ?? updates.displayOrder,
+      };
+
+      try {
+        await api.put(`/admin/categories/${id}`, payload);
+      } catch (errAdmin: any) {
+        if (errAdmin?.status === 404) {
+          await api.put(`/categories/${id}`, {
+            ...payload,
+            icon_url: payload.image_url,
+            sort_order: payload.display_order,
+          });
+        } else {
+          throw errAdmin;
+        }
+      }
     } catch (err) {
       console.warn('Erro ao atualizar categoria via API, aplicando fallback local:', err);
     }
@@ -141,12 +173,20 @@ export const categoryService = {
   },
 
   /**
-   * DELETE /api/v1/categories/{id}
-   * Exclui categoria global
+   * DELETE /api/v1/admin/categories/{category_id}
+   * Remoção lógica ou definitiva da categoria global
    */
   async deleteApi(id: string, admin: AdminUser): Promise<boolean> {
     try {
-      await api.delete(`/categories/${id}`);
+      try {
+        await api.delete(`/admin/categories/${id}`);
+      } catch (errAdmin: any) {
+        if (errAdmin?.status === 404) {
+          await api.delete(`/categories/${id}`);
+        } else {
+          throw errAdmin;
+        }
+      }
     } catch (err) {
       console.warn('Erro ao excluir categoria via API, aplicando fallback local:', err);
     }
@@ -155,24 +195,16 @@ export const categoryService = {
   },
 
   /**
-   * POST /api/v1/uploads
-   * FormData: file, entity_type: "banners" | "icons"
+   * Upload de imagem para categoria via POST /uploads/image?category=categories
    */
-  async uploadMedia(file: File, entityType = 'banners'): Promise<string> {
+  async uploadMedia(file: File, _entityType?: string): Promise<string> {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('entity_type', entityType);
-
-      const res = await api.upload<any>('/uploads', formData);
-      const fileUrl = res?.url || res?.file_url || res?.path;
-      if (fileUrl) return fileUrl;
+      const res = await uploadService.uploadImage(file, 'categories');
+      return res.url;
     } catch (err) {
-      console.warn('Erro no upload via API, gerando URL temporária para preview:', err);
+      console.warn('Erro no upload via API, gerando preview local:', err);
+      return URL.createObjectURL(file);
     }
-
-    // Fallback preview URL
-    return URL.createObjectURL(file);
   },
 
   create(data: Omit<Category, 'id' | 'productsCount'>, admin: AdminUser): Category {
@@ -220,15 +252,48 @@ export const categoryService = {
       adminId: admin.id,
       adminName: admin.name,
       adminRole: String(admin.role),
-      action: 'Atualização de categoria',
+      action: 'Edição de categoria',
       module: 'Categorias',
       entityId: id,
       details: `Categoria "${category.name}" atualizada`,
-      previousValue: JSON.stringify({ name: previous.name, order: previous.displayOrder, active: previous.active }),
-      currentValue: JSON.stringify({ name: updated.name, order: updated.displayOrder, active: updated.active }),
+      previousValue: JSON.stringify(previous),
+      currentValue: JSON.stringify(updated),
     });
 
     return updated;
+  },
+
+  toggleActive(id: string, admin: AdminUser): Category | undefined {
+    const category = this.getById(id);
+    if (!category) return undefined;
+    const newActive = !category.active;
+    return this.update(id, { active: newActive, is_active: newActive }, admin);
+  },
+
+  reorder(orderedIdsOrCats: (string | Category)[], admin: AdminUser): Category[] {
+    const orderedIds = orderedIdsOrCats.map((item) => (typeof item === 'string' ? item : item.id));
+    const categories = db.getCategories();
+    const updated = categories.map((c) => {
+      const newOrder = orderedIds.indexOf(c.id);
+      return newOrder !== -1
+        ? { ...c, displayOrder: newOrder + 1, sort_order: newOrder + 1 }
+        : c;
+    });
+
+    const sorted = updated.sort((a, b) => a.displayOrder - b.displayOrder);
+    db.saveCategories(sorted);
+
+    db.logAudit({
+      adminId: admin.id,
+      adminName: admin.name,
+      adminRole: String(admin.role),
+      action: 'Reordenação de categorias',
+      module: 'Categorias',
+      entityId: 'multiple',
+      details: 'Ordem de exibição das categorias foi atualizada',
+    });
+
+    return sorted;
   },
 
   delete(id: string, admin: AdminUser): boolean {
@@ -245,50 +310,40 @@ export const categoryService = {
       action: 'Exclusão de categoria',
       module: 'Categorias',
       entityId: id,
-      details: `Categoria "${category.name}" foi excluída do sistema`,
-      previousValue: JSON.stringify(category),
+      details: `Categoria "${category.name}" excluída`,
     });
 
     return true;
   },
 
-  reorder(categoriesOrdered: Category[], admin: AdminUser): void {
-    const updated = categoriesOrdered.map((cat, index) => ({
-      ...cat,
-      displayOrder: index + 1,
-      sort_order: index + 1,
-    }));
-    db.saveCategories(updated);
-
-    db.logAudit({
-      adminId: admin.id,
-      adminName: admin.name,
-      adminRole: String(admin.role),
-      action: 'Reordenação de categorias',
-      module: 'Categorias',
-      entityId: 'global',
-      details: 'Ordem de exibição das categorias foi atualizada',
-    });
-  },
-
-  normalizeFromApi(item: any, fallbackIndex: number): Category {
-    const order = Number(item.sort_order ?? item.display_order ?? item.displayOrder ?? fallbackIndex + 1);
-    const active = item.is_active ?? item.active ?? true;
-    const img = item.image_url || item.icon_url || item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&auto=format&fit=crop&q=80';
+  normalizeFromApi(item: any, fallbackIndex = 0): Category {
+    const sortOrder = Number(
+      item.sort_order ?? item.display_order ?? item.displayOrder ?? fallbackIndex + 1
+    );
+    const isActive = Boolean(
+      item.is_active !== undefined ? item.is_active : item.active !== undefined ? item.active : true
+    );
+    const img =
+      item.icon_url ||
+      item.image_url ||
+      item.image ||
+      'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&auto=format&fit=crop&q=80';
 
     return {
       id: String(item.id),
       name: item.name || 'Categoria',
-      slug: item.slug || (item.name ? item.name.toLowerCase().replace(/\s+/g, '-') : 'categoria'),
+      slug: item.slug || (item.name ? item.name.toLowerCase().replace(/\s+/g, '-') : 'cat'),
       icon: item.icon || 'Utensils',
-      icon_url: item.image_url || item.icon_url,
+      icon_url: item.icon_url || item.image_url,
       image: img,
-      displayOrder: order,
-      sort_order: order,
-      active,
-      is_active: active,
+      displayOrder: sortOrder,
+      sort_order: sortOrder,
+      active: isActive,
+      is_active: isActive,
       productsCount: Number(item.products_count ?? item.productsCount ?? 0),
-      description: item.description,
+      description: item.description || '',
     };
   },
 };
+
+export default categoryService;

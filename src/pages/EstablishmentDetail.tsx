@@ -81,13 +81,25 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
   const [actionType, setActionType] = useState<'approve' | 'suspend' | 'activate' | null>(null);
   const [actionJustification, setActionJustification] = useState('');
 
-  const refreshRestaurant = () => {
+  const refreshRestaurant = async () => {
+    try {
+      const live = await restaurantService.fetchRestaurantById(restaurantId);
+      if (live) {
+        setRestaurant(live);
+        if (live.theme) setCurrentTheme(live.theme);
+        return;
+      }
+    } catch {}
     const updated = restaurantService.getById(restaurantId);
     setRestaurant(updated);
     if (updated?.theme) {
       setCurrentTheme(updated.theme);
     }
   };
+
+  React.useEffect(() => {
+    refreshRestaurant();
+  }, [restaurantId]);
 
   const orders = useMemo(() => {
     return orderService.getByRestaurantId(restaurantId);
@@ -156,30 +168,30 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
     refreshRestaurant();
   };
 
-  const handleConfirmStatusChange = () => {
-    if (!actionType) return;
+  const handleConfirmStatusChange = async () => {
+    if (!actionType || !restaurant) return;
 
     if (actionType === 'approve') {
-      restaurantService.approve(restaurant.id, currentUser);
+      await restaurantService.updateStatusApi(restaurant.id, 'APPROVED', currentUser, actionJustification);
       success(`Estabelecimento "${restaurant.name}" aprovado.`);
     } else if (actionType === 'suspend') {
-      restaurantService.suspend(restaurant.id, currentUser, actionJustification);
+      await restaurantService.updateStatusApi(restaurant.id, 'SUSPENDED', currentUser, actionJustification);
       success(`Estabelecimento "${restaurant.name}" suspenso.`);
     } else if (actionType === 'activate') {
-      restaurantService.activate(restaurant.id, currentUser);
+      await restaurantService.updateStatusApi(restaurant.id, 'ACTIVE', currentUser, actionJustification);
       success(`Estabelecimento "${restaurant.name}" reativado.`);
     }
 
     setActionType(null);
     setActionJustification('');
-    refreshRestaurant();
+    await refreshRestaurant();
   };
 
-  const handleSaveTheme = () => {
+  const handleSaveTheme = async () => {
     if (!restaurant) return;
-    restaurantService.updateTheme(restaurant.id, currentTheme, currentUser);
+    await restaurantService.updateThemeApi(restaurant.id, currentTheme, currentUser);
     success(`Identidade visual e cores do app atualizadas para "${restaurant.name}"!`);
-    refreshRestaurant();
+    await refreshRestaurant();
   };
 
   return (

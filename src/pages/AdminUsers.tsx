@@ -187,6 +187,21 @@ export const AdminUsersPage: React.FC = () => {
     }
   };
 
+  const handleRevokeRole = async () => {
+    if (!roleModalUser) return;
+    setIsSavingRole(true);
+    try {
+      await adminService.revokeRole(roleModalUser.id, selectedRole, currentUser);
+      success(`Perfil ${selectedRole} revogado de ${roleModalUser.name}!`);
+      setRoleModalUser(null);
+      refreshList();
+    } catch (err: any) {
+      error('Falha ao revogar perfil:', err.message);
+    } finally {
+      setIsSavingRole(false);
+    }
+  };
+
   const roleBadgeVariants: Record<string, any> = {
     SUPER_ADMIN: 'purple',
     ADMIN: 'info',
@@ -452,21 +467,31 @@ export const AdminUsersPage: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setRoleModalUser(null)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
+              onClick={handleRevokeRole}
               disabled={isSavingRole}
-              className="px-4 py-2 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-xs disabled:opacity-50"
+              className="px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors disabled:opacity-50"
             >
-              {isSavingRole ? 'Atribuindo...' : 'Salvar Perfil (RBAC)'}
+              Revogar Perfil
             </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setRoleModalUser(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingRole}
+                className="px-4 py-2 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-xs disabled:opacity-50"
+              >
+                {isSavingRole ? 'Atribuindo...' : 'Salvar Perfil (RBAC)'}
+              </button>
+            </div>
           </div>
         </form>
       </Modal>

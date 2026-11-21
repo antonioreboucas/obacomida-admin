@@ -66,9 +66,20 @@ export const PromotionsPage: React.FC = () => {
   // Delete Dialog
   const [deleteTarget, setDeleteTarget] = useState<Promotion | null>(null);
 
-  const refreshList = () => {
+  const refreshList = async () => {
+    try {
+      const live = await promotionService.fetchPromotions();
+      if (live && live.length > 0) {
+        setPromotions(live);
+        return;
+      }
+    } catch {}
     setPromotions(promotionService.getAll());
   };
+
+  React.useEffect(() => {
+    refreshList();
+  }, []);
 
   const filtered = useMemo(() => {
     return promotions.filter((p) => {
@@ -167,14 +178,35 @@ export const PromotionsPage: React.FC = () => {
       );
       success(`Promoção "${formData.name}" atualizada!`);
     } else {
-      promotionService.create(
+      if (formData.code && (formData.type === 'coupon' || formData.code.trim())) {
+        promotionService.createCouponApi(
+          {
+            code: formData.code.toUpperCase(),
+            name: formData.name,
+            discount_type: formData.type === 'percent' ? 'PERCENTAGE' : 'FIXED',
+            discount_value: formData.discountValue,
+            min_order_value: formData.minOrderValue,
+            max_uses: formData.maxUses,
+          },
+          currentUser
+        );
+      }
+
+      promotionService.createPromotionApi(
         {
-          ...formData,
-          categoryName: catObj?.name,
-          restaurantName: restObj?.name,
+          name: formData.name,
+          description: formData.description,
+          discount_type: formData.type === 'percent' ? 'PERCENTAGE' : 'FIXED',
+          discount_value: formData.discountValue,
+          min_order_value: formData.minOrderValue,
+          starts_at: formData.startDate,
+          ends_at: formData.endDate,
+          is_active: formData.status === 'Ativa',
+          restaurant_id: formData.restaurantId || null,
         },
         currentUser
       );
+
       success(`Promoção "${formData.name}" criada com sucesso!`);
     }
 

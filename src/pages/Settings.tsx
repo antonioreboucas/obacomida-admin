@@ -38,6 +38,22 @@ export const SettingsPage: React.FC = () => {
   const [settings, setSettings] = useState<PlatformSettings>(settingsService.get());
   const [activeTab, setActiveTab] = useState<'general' | 'rates' | 'payments' | 'rules' | 'domains'>('general');
 
+  React.useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const live = await settingsService.fetchSettings();
+        if (mounted && live) setSettings(live);
+      } catch (err) {
+        console.warn('Erro ao carregar configurações via API:', err);
+      }
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Test slug for live domain link previews
   const [testSlug, setTestSlug] = useState('obaburger');
   const [copiedApp, setCopiedApp] = useState(false);
@@ -62,9 +78,9 @@ export const SettingsPage: React.FC = () => {
     setSettings({ ...settings, allowedPaymentMethods: updated });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    settingsService.update(settings, currentUser);
+    await settingsService.updateApi(settings, currentUser);
     success('Configurações globais salvas com sucesso!', 'Os novos domínios e parâmetros já estão em vigor.');
   };
 

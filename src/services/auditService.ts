@@ -1,27 +1,25 @@
 import { db } from '../storage/db';
 import { api, isMockEnabled } from './api';
 import type { AuditLog } from '../types';
+import type { AuditLogItem, AuditLogsQueryParams } from '../types/api';
 
 export const auditService = {
   /**
-   * GET /api/v1/admin/audit-logs?user_id=&action=&entity_name=&page=1&page_size=30
-   * Rastreia todas as ações administrativas críticas com data, IP, usuário e alterações realizadas
+   * GET /api/v1/admin/audit-logs?action=&entity_name=&entity_id=&page=&per_page=
+   * Trilha de auditoria oficial com data, IP, usuário, user_agent e diff de valores
    */
-  async fetchAuditLogs(filters?: {
-    user_id?: string;
-    action?: string;
-    entity_name?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<{ items: AuditLog[]; total: number }> {
+  async fetchAuditLogs(
+    filters?: AuditLogsQueryParams & { user_id?: string; page_size?: number }
+  ): Promise<{ items: AuditLog[]; total: number }> {
     const page = filters?.page || 1;
-    const pageSize = filters?.page_size || 30;
+    const perPage = filters?.per_page || filters?.page_size || 30;
 
     try {
-      const params: Record<string, any> = { page, page_size: pageSize };
-      if (filters?.user_id) params.user_id = filters.user_id;
+      const params: Record<string, any> = { page, per_page: perPage };
       if (filters?.action) params.action = filters.action;
       if (filters?.entity_name) params.entity_name = filters.entity_name;
+      if (filters?.entity_id) params.entity_id = filters.entity_id;
+      if (filters?.user_id) params.user_id = filters.user_id;
 
       const data = await api.get<any>('/admin/audit-logs', params);
 
@@ -37,7 +35,7 @@ export const auditService = {
         };
       }
     } catch (err) {
-      console.warn('API de auditoria inacessível ou sem permissão:', err);
+      console.warn('API /admin/audit-logs inacessível ou sem permissão:', err);
     }
 
     if (!isMockEnabled()) {
@@ -49,12 +47,13 @@ export const auditService = {
       if (filters?.user_id && l.adminId !== filters.user_id && l.user_id !== filters.user_id) return false;
       if (filters?.action && !l.action.toLowerCase().includes(filters.action.toLowerCase())) return false;
       if (filters?.entity_name && l.module !== filters.entity_name && l.entity_name !== filters.entity_name) return false;
+      if (filters?.entity_id && l.entityId !== filters.entity_id) return false;
       return true;
     });
 
-    const start = (page - 1) * pageSize;
+    const start = (page - 1) * perPage;
     return {
-      items: filtered.slice(start, start + pageSize),
+      items: filtered.slice(start, start + perPage),
       total: filtered.length,
     };
   },
@@ -76,10 +75,14 @@ export const auditService = {
   },
 
   normalizeFromApi(item: any): AuditLog {
+    const userEmail = item.user_email || item.admin_email || item.email || 'sistema@obacomida.com.br';
+    const oldVals = item.old_values !== undefined ? item.old_values : item.previous_value || item.previousValue;
+    const newVals = item.new_values !== undefined ? item.new_values : item.current_value || item.currentValue;
+
     return {
       id: String(item.id),
       adminId: item.admin_id || item.user_id || item.adminId || 'usr-system',
-      adminName: item.admin_name || item.user_name || item.adminName || 'Administrador',
+      adminName: item.admin_name || item.user_name || item.user_email || 'Administrador',
       adminRole: item.admin_role || item.user_role || item.adminRole || 'ADMIN',
       action: item.action || 'Operação administrativa',
       module: item.module || item.entity_name || 'Geral',
@@ -87,10 +90,16 @@ export const auditService = {
       entityId: item.entity_id || item.entityId || 'N/A',
       timestamp: item.timestamp || item.created_at || new Date().toISOString(),
       ip_address: item.ip_address || item.ip || '127.0.0.1',
-      details: item.details || item.description || '',
-      changes: item.changes || (item.previousValue && item.currentValue ? { before: item.previousValue, after: item.currentValue } : undefined),
-      previousValue: typeof item.previous_value === 'object' ? JSON.stringify(item.previous_value) : item.previous_value || item.previousValue,
-      currentValue: typeof item.current_value === 'object' ? JSON.stringify(item.current_value) : item.current_value || item.currentValue,
+      details: item.details || item.description || (userEmail ? `Ação por ${userEmail}` : ''),
+      changes:
+        item.changes ||
+        (oldVals && newVals
+          ? { before: oldVals, after: newVals }
+          : undefined),
+      previousValue: typeof oldVals === 'object' ? JSON.stringify(oldVals) : String(oldVals || ''),
+      currentValue: typeof newVals === 'object' ? JSON.stringify(newVals) : String(newVals || ''),
     };
   },
 };
+
+export default auditService;

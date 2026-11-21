@@ -112,6 +112,28 @@ export const adminService = {
   },
 
   /**
+   * DELETE /api/v1/admin/users/{id}/roles/{role_name}
+   * Revoga perfil de acesso do usuário
+   */
+  async revokeRole(
+    userId: string,
+    roleName: string,
+    currentAdmin: AdminUser
+  ): Promise<AdminUser | undefined> {
+    try {
+      await api.delete(`/admin/users/${userId}/roles/${roleName.toUpperCase()}`);
+    } catch (err) {
+      console.warn('Erro ao revogar role via API, aplicando fallback local:', err);
+    }
+
+    const user = this.getById(userId);
+    if (!user) return undefined;
+    const remainingRoles = (user.roles || []).filter((r) => r.toUpperCase() !== roleName.toUpperCase());
+    const nextRole = remainingRoles[0] ? (remainingRoles[0] as AdminRole) : 'admin';
+    return this.update(userId, { role: nextRole, roles: remainingRoles }, currentAdmin);
+  },
+
+  /**
    * POST /api/v1/admin/users/{id}/block
    */
   async blockUser(userId: string, currentAdmin: AdminUser): Promise<AdminUser | undefined> {
