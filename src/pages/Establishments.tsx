@@ -35,6 +35,7 @@ import {
   getStoreAppUrlDisplay,
   getStorePartnerUrlDisplay,
 } from '../utils/slugUtils';
+import { maskCnpj, maskPhone, maskCep } from '../utils/maskUtils';
 import type { Restaurant, RestaurantStatus, Category } from '../types';
 
 interface EstablishmentsProps {
@@ -828,10 +829,11 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                   <input
                     type="text"
                     required
+                    maxLength={18}
                     value={newRestData.cnpj}
-                    onChange={(e) => setNewRestData({ ...newRestData, cnpj: e.target.value })}
+                    onChange={(e) => setNewRestData({ ...newRestData, cnpj: maskCnpj(e.target.value) })}
                     placeholder="00.000.000/0001-00"
-                    className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                    className="w-full text-xs font-mono border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                   />
                 </div>
 
@@ -840,10 +842,11 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                   <input
                     type="text"
                     required
+                    maxLength={15}
                     value={newRestData.phone}
-                    onChange={(e) => setNewRestData({ ...newRestData, phone: e.target.value })}
+                    onChange={(e) => setNewRestData({ ...newRestData, phone: maskPhone(e.target.value) })}
                     placeholder="(11) 99999-8888"
-                    className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                    className="w-full text-xs font-mono border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                   />
                 </div>
 
@@ -860,7 +863,39 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Cidade / UF / CEP *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">CEP *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={9}
+                    value={newRestData.zipCode}
+                    onChange={(e) => {
+                      const masked = maskCep(e.target.value);
+                      setNewRestData((prev) => ({ ...prev, zipCode: masked }));
+                      const clean = masked.replace(/\D/g, '');
+                      if (clean.length === 8) {
+                        fetch(`https://viacep.com.br/ws/${clean}/json/`)
+                          .then((res) => res.json())
+                          .then((d) => {
+                            if (!d.erro) {
+                              setNewRestData((prev) => ({
+                                ...prev,
+                                city: d.localidade || prev.city,
+                                state: d.uf || prev.state,
+                                address: d.logradouro ? `${d.logradouro}, nº , ${d.bairro || ''}` : prev.address,
+                              }));
+                            }
+                          })
+                          .catch(() => {});
+                      }
+                    }}
+                    placeholder="01000-000"
+                    className="w-full text-xs font-mono border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Cidade / UF *</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -868,7 +903,7 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                       value={newRestData.city}
                       onChange={(e) => setNewRestData({ ...newRestData, city: e.target.value })}
                       placeholder="Cidade"
-                      className="w-1/2 text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                      className="w-3/4 text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                     />
                     <input
                       type="text"
@@ -877,15 +912,7 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                       value={newRestData.state}
                       onChange={(e) => setNewRestData({ ...newRestData, state: e.target.value.toUpperCase() })}
                       placeholder="UF"
-                      className="w-1/6 text-xs border border-slate-300 rounded-xl p-2.5 text-center focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-mono"
-                    />
-                    <input
-                      type="text"
-                      required
-                      value={newRestData.zipCode}
-                      onChange={(e) => setNewRestData({ ...newRestData, zipCode: e.target.value })}
-                      placeholder="01000-000"
-                      className="w-1/3 text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-mono"
+                      className="w-1/4 text-xs font-mono border border-slate-300 rounded-xl p-2.5 text-center focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 uppercase"
                     />
                   </div>
                 </div>

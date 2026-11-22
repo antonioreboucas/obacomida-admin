@@ -29,6 +29,7 @@ import {
   getStorePartnerUrlDisplay,
   sanitizeSlug,
 } from '../utils/slugUtils';
+import { maskCnpj, maskPhone } from '../utils/maskUtils';
 import type { PlatformSettings, PaymentMethod } from '../types';
 
 export const SettingsPage: React.FC = () => {
@@ -648,8 +649,9 @@ export const SettingsPage: React.FC = () => {
                 <label className="block font-semibold text-slate-700 mb-1">CNPJ</label>
                 <input
                   type="text"
+                  maxLength={18}
                   value={settings.cnpj}
-                  onChange={(e) => setSettings({ ...settings, cnpj: e.target.value })}
+                  onChange={(e) => setSettings({ ...settings, cnpj: maskCnpj(e.target.value) })}
                   className="w-full p-2.5 border border-slate-300 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
               </div>
@@ -672,9 +674,10 @@ export const SettingsPage: React.FC = () => {
                 </label>
                 <input
                   type="text"
+                  maxLength={15}
                   value={settings.supportPhone}
-                  onChange={(e) => setSettings({ ...settings, supportPhone: e.target.value })}
-                  className="w-full p-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  onChange={(e) => setSettings({ ...settings, supportPhone: maskPhone(e.target.value) })}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                 />
               </div>
 
