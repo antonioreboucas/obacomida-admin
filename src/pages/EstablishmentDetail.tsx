@@ -505,7 +505,7 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
               <div className="col-span-2">
                 <span className="text-slate-400 block font-medium">Endereço Completo</span>
                 <span className="font-bold text-slate-800">
-                  {restaurant.address}, {restaurant.city} - {restaurant.state} (CEP: {restaurant.zipCode})
+                  {typeof restaurant.address === 'string' ? restaurant.address : ''}, {restaurant.city} - {restaurant.state} (CEP: {restaurant.zipCode})
                 </span>
               </div>
             </div>

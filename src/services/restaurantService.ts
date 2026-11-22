@@ -478,6 +478,28 @@ export const restaurantService = {
         }
       : undefined;
 
+    const rawAddress = item.address;
+    let formattedAddress = '';
+    let city = item.city || 'São Paulo';
+    let state = item.state || 'SP';
+    let zipCode = item.zip_code || item.zipCode || '01000-000';
+
+    if (rawAddress && typeof rawAddress === 'object') {
+      const parts = [
+        rawAddress.street,
+        rawAddress.number ? `nº ${rawAddress.number}` : '',
+        rawAddress.neighborhood,
+      ].filter(Boolean);
+      formattedAddress = parts.join(', ');
+      if (rawAddress.city) city = rawAddress.city;
+      if (rawAddress.state) state = rawAddress.state;
+      if (rawAddress.postal_code || rawAddress.zip_code) {
+        zipCode = rawAddress.postal_code || rawAddress.zip_code;
+      }
+    } else if (typeof rawAddress === 'string') {
+      formattedAddress = rawAddress;
+    }
+
     return {
       id: String(item.id),
       name: rawName,
@@ -491,10 +513,10 @@ export const restaurantService = {
       ownerName: item.owner_name || item.ownerName || item.corporate_name || 'Responsável',
       phone: item.phone || '(11) 99999-9999',
       email: item.email || 'contato@restaurante.com.br',
-      city: item.city || 'São Paulo',
-      state: item.state || 'SP',
-      address: item.address || '',
-      zipCode: item.zip_code || item.zipCode || '01000-000',
+      city,
+      state,
+      address: formattedAddress,
+      zipCode,
       cnpj: item.cnpj || '00.000.000/0001-00',
       createdAt: item.created_at || item.createdAt || new Date().toISOString(),
       status: BACKEND_TO_LEGACY[item.status] || item.status || 'Ativo',

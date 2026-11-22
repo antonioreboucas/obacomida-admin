@@ -541,7 +541,7 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
 
                   <td className="py-3.5 px-4">
                     <p className="font-semibold text-slate-800">{r.city} - {r.state}</p>
-                    <p className="text-[10px] text-slate-400 truncate max-w-xs">{r.address}</p>
+                    <p className="text-[10px] text-slate-400 truncate max-w-xs">{typeof r.address === 'string' ? r.address : ''}</p>
                   </td>
 
                   <td className="py-3.5 px-4">
@@ -1288,7 +1288,9 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                   </div>
                   <div className="pt-1 border-t border-slate-200 text-slate-500">
                     <span className="block text-[10px] text-slate-400">Endereço Completo:</span>
-                    <span className="font-medium text-slate-700">{drawerRestaurant.address} (CEP: {drawerRestaurant.zipCode})</span>
+                    <span className="font-medium text-slate-700">
+                      {typeof drawerRestaurant.address === 'string' ? drawerRestaurant.address : ''} (CEP: {drawerRestaurant.zipCode})
+                    </span>
                   </div>
                 </div>
               </div>
