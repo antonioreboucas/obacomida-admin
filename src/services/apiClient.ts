@@ -205,16 +205,14 @@ export class ApiClient {
         const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
         if (!error.response) {
-          // Network Error or Server Offline
+          // Network Error, CORS block or Server Offline
           this.isOnline = false;
           this.notifyStatus();
-          return Promise.reject(
-            new ApiError(
-              `Falha de conexão com a API (${this.baseUrl}): Servidor indisponível ou offline.`,
-              0,
-              error
-            )
-          );
+          const isNetworkError = error.code === 'ERR_NETWORK' || error.message === 'Network Error';
+          const msg = isNetworkError
+            ? `Falha de conexão com a API (${this.baseUrl}): Servidor indisponível, offline ou bloqueado por política de CORS da API (Origem não permitida).`
+            : `Falha de conexão com a API (${this.baseUrl}): Servidor indisponível ou offline.`;
+          return Promise.reject(new ApiError(msg, 0, error));
         }
 
         const status = error.response.status;

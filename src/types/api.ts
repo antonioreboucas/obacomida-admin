@@ -612,8 +612,10 @@ export interface PlatformSettingsData {
   auto_approve_new_restaurants: boolean;
   app_domain: string; // Ex: 'obacomida.com.br'
   app_protocol: 'https' | 'http';
+  app_path_pattern?: string;
   partner_domain: string; // Ex: 'parceiro.obacomida.com.br'
   partner_protocol: 'https' | 'http';
+  partner_path_pattern?: string;
 }
 
 export type PlatformSettingsUpdate = Partial<PlatformSettingsData>;
