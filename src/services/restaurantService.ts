@@ -276,6 +276,94 @@ export const restaurantService = {
   },
 
   /**
+   * Atualiza dados cadastrais, operacionais e visuais do restaurante na API central e no banco local
+   * PUT /api/v1/partners/restaurants/{id}/settings (com fallback)
+   */
+  async updateApi(
+    id: string,
+    updates: Partial<Restaurant>,
+    admin: AdminUser,
+    reason?: string
+  ): Promise<Restaurant | undefined> {
+    const token = api.getToken();
+
+    if (token) {
+      try {
+        const payload: Record<string, any> = {};
+        if (updates.name !== undefined) payload.trade_name = updates.name.trim();
+        if (updates.ownerName !== undefined) payload.corporate_name = updates.ownerName.trim();
+        if (updates.phone !== undefined) payload.phone = updates.phone.trim();
+        if (updates.email !== undefined) payload.email = updates.email.trim();
+        if (updates.logo !== undefined) payload.logo_url = updates.logo;
+        if (updates.coverImage !== undefined) payload.banner_url = updates.coverImage;
+        if (updates.minimumOrder !== undefined) payload.minimum_order = Number(updates.minimumOrder);
+        if (updates.deliveryFee !== undefined) payload.delivery_fee = Number(updates.deliveryFee);
+        if (updates.deliveryTimeMin !== undefined) payload.average_delivery_time_min = Number(updates.deliveryTimeMin);
+        if (updates.deliveryTimeMax !== undefined) payload.average_delivery_time_max = Number(updates.deliveryTimeMax);
+        if (updates.isOpen !== undefined) payload.is_open = Boolean(updates.isOpen);
+
+        if (updates.categoryId) {
+          payload.global_category_id = updates.categoryId;
+        }
+
+        if (updates.theme) {
+          payload.theme = {
+            primary_color: updates.theme.primaryColor,
+            secondary_color: updates.theme.secondaryColor,
+            preset_key: updates.theme.presetKey,
+            text_color: updates.theme.textColor,
+          };
+        }
+
+        const endpoints = [
+          `/partners/restaurants/${id}/settings`,
+          `/admin/restaurants/${id}`,
+          `/restaurants/${id}`,
+        ];
+
+        for (const ep of endpoints) {
+          try {
+            await api.put(ep, payload);
+            break;
+          } catch (putErr: any) {
+            if (putErr?.status === 404 || putErr?.status === 405) {
+              continue;
+            }
+            console.warn(`Tentativa de PUT em ${ep} falhou:`, putErr);
+            break;
+          }
+        }
+
+        if (updates.slug) {
+          try {
+            await this.updateSlugApi(id, updates.slug, admin);
+          } catch (slugErr) {
+            console.warn('Erro ao atualizar slug na API:', slugErr);
+          }
+        }
+
+        if (updates.commissionRate !== undefined || updates.fixedFee !== undefined) {
+          try {
+            await this.updateCommissionApi(
+              id,
+              updates.commissionRate ?? 12.0,
+              updates.fixedFee ?? 1.5,
+              admin,
+              reason || 'Atualização cadastral'
+            );
+          } catch (commErr) {
+            console.warn('Erro ao atualizar comissão na API:', commErr);
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao atualizar restaurante na API central:', err);
+      }
+    }
+
+    return this.update(id, updates, admin, reason);
+  },
+
+  /**
    * POST /api/v1/admin/restaurants (com fallback para /api/v1/restaurants)
    * Cadastra novo restaurante diretamente no banco de dados via API Central FastAPI
    */

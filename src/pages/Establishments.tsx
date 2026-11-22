@@ -20,6 +20,7 @@ import {
   Upload,
   Smartphone,
   Image as ImageIcon,
+  Edit2,
 } from 'lucide-react';
 import { restaurantService } from '../services/restaurantService';
 import { categoryService } from '../services/categoryService';
@@ -142,6 +143,134 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
     status: 'Ativo' as RestaurantStatus,
     theme: getDefaultThemeForCategory('Hamburguerias'),
   });
+
+  // Edit Restaurant Modal State & Handlers
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingRestaurant, setEditingRestaurant] = useState<Restaurant | null>(null);
+  const [isEditingSaving, setIsEditingSaving] = useState(false);
+  const [isEditingUploadingLogo, setIsEditingUploadingLogo] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    slug: '',
+    categoryId: '',
+    category: '',
+    ownerName: '',
+    phone: '',
+    email: '',
+    cnpj: '',
+    zipCode: '',
+    city: '',
+    state: '',
+    address: '',
+    logo: '',
+    coverImage: '',
+    commissionRate: 12.0,
+    fixedFee: 1.5,
+    minimumOrder: 25.0,
+    deliveryFee: 6.9,
+    deliveryTimeMin: 25,
+    deliveryTimeMax: 40,
+    isOpen: true,
+    status: 'Ativo' as RestaurantStatus,
+  });
+
+  const handleOpenEdit = (r: Restaurant) => {
+    setEditingRestaurant(r);
+    const cat = categories.find(
+      (c) => c.name.toLowerCase() === r.category.toLowerCase() || c.id === r.categoryId
+    );
+    setEditFormData({
+      name: r.name || '',
+      slug: r.slug || '',
+      categoryId: cat ? cat.id : r.categoryId || '',
+      category: r.category || 'Hamburguerias',
+      ownerName: r.ownerName || '',
+      phone: r.phone || '',
+      email: r.email || '',
+      cnpj: r.cnpj || '',
+      zipCode: r.zipCode || '',
+      city: r.city || '',
+      state: r.state || '',
+      address: typeof r.address === 'string' ? r.address : '',
+      logo: r.logo || '',
+      coverImage: r.coverImage || '',
+      commissionRate: r.commissionRate ?? 12.0,
+      fixedFee: r.fixedFee ?? 1.5,
+      minimumOrder: r.minimumOrder ?? 25.0,
+      deliveryFee: r.deliveryFee ?? 6.9,
+      deliveryTimeMin: r.deliveryTimeMin ?? 25,
+      deliveryTimeMax: r.deliveryTimeMax ?? 40,
+      isOpen: r.isOpen ?? true,
+      status: r.status,
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleEditLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsEditingUploadingLogo(true);
+    try {
+      const res = await uploadService.uploadImage(file, 'logos');
+      if (res && res.url) {
+        setEditFormData((prev) => ({ ...prev, logo: res.url }));
+        success('Logo atualizada com sucesso!', 'A nova imagem da logo foi carregada.');
+      }
+    } catch (err: any) {
+      error(err?.message || 'Erro ao carregar a imagem da logo.');
+    } finally {
+      setIsEditingUploadingLogo(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRestaurant) return;
+
+    if (!editFormData.name.trim() || !editFormData.ownerName.trim() || !editFormData.phone.trim() || !editFormData.cnpj.trim()) {
+      error('Preencha os campos obrigatórios (Nome, Responsável, Telefone e CNPJ).');
+      return;
+    }
+
+    const cleanCnpj = editFormData.cnpj.trim();
+    if (cleanCnpj.length < 14) {
+      error('O CNPJ deve ter no mínimo 14 caracteres (ex: 00.000.000/0001-00).');
+      return;
+    }
+
+    const finalSlug = editFormData.slug ? sanitizeSlug(editFormData.slug) : generateSlug(editFormData.name);
+
+    setIsEditingSaving(true);
+    try {
+      await restaurantService.updateApi(
+        editingRestaurant.id,
+        {
+          ...editFormData,
+          slug: finalSlug,
+        },
+        currentUser,
+        'Dados cadastrais e operacionais atualizados pela administração'
+      );
+
+      success(`Estabelecimento "${editFormData.name}" atualizado com sucesso!`);
+      setIsEditOpen(false);
+      if (drawerRestaurant && drawerRestaurant.id === editingRestaurant.id) {
+        setDrawerRestaurant({
+          ...drawerRestaurant,
+          ...editFormData,
+          slug: finalSlug,
+        });
+      }
+      setEditingRestaurant(null);
+      await refreshList();
+    } catch (err: any) {
+      error(err?.message || 'Erro ao atualizar dados do restaurante.');
+    } finally {
+      setIsEditingSaving(false);
+    }
+  };
 
   const refreshList = useCallback(async () => {
     setIsLoading(true);
@@ -605,6 +734,14 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                         className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                       >
                         <SlidersHorizontal className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenEdit(r)}
+                        title="Editar Dados Cadastrais e Logo"
+                        className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                      >
+                        <Edit2 className="w-4 h-4" />
                       </button>
 
                       <button
@@ -1177,6 +1314,416 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
         </form>
       </Modal>
 
+      {/* Edit Restaurant Modal */}
+      <Modal
+        isOpen={isEditOpen}
+        onClose={() => {
+          setIsEditOpen(false);
+          setEditingRestaurant(null);
+        }}
+        title={`Editar Estabelecimento: ${editingRestaurant?.name || ''}`}
+        subtitle="Altere a logo para o app, dados cadastrais, endereço e parâmetros operacionais"
+        maxWidth="4xl"
+      >
+        <form onSubmit={handleSaveEdit} className="space-y-5">
+          {/* Logo Oficial do Estabelecimento (App Oba Comida) */}
+          <div className="p-4 bg-gradient-to-r from-amber-50/70 via-white to-slate-50 border border-amber-200/80 rounded-2xl shadow-2xs">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {/* Preview da Logo */}
+              <div className="relative group shrink-0">
+                <div className="w-18 h-18 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-white flex items-center justify-center ring-2 ring-amber-500/20">
+                  {editFormData.logo ? (
+                    <img
+                      src={editFormData.logo}
+                      alt="Logo do Restaurante"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src =
+                          'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80';
+                      }}
+                    />
+                  ) : (
+                    <Store className="w-8 h-8 text-slate-300" />
+                  )}
+                </div>
+                <span
+                  className="absolute -bottom-1 -right-1 bg-amber-600 text-white p-1 rounded-full shadow-xs"
+                  title="Exibido no App do Cliente e Vitrine"
+                >
+                  <Smartphone className="w-3 h-3" />
+                </span>
+              </div>
+
+              {/* Informações e Botão de Upload */}
+              <div className="flex-1 min-w-0 space-y-2 w-full">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-xs font-bold text-slate-900">
+                        Logo do Restaurante para o App *
+                      </label>
+                      <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                        Ícone Oficial do App
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Esta imagem é a marca oficial da loja exibida no catálogo, buscas e vitrine do aplicativo.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={editFormData.logo}
+                    onChange={(e) => setEditFormData({ ...editFormData, logo: e.target.value })}
+                    placeholder="Cole a URL direta da logo ou clique em Upload..."
+                    className="flex-1 text-xs border border-slate-300 rounded-xl p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 font-mono"
+                  />
+
+                  <label className="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors shrink-0">
+                    {isEditingUploadingLogo ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5" />
+                    )}
+                    <span>{isEditingUploadingLogo ? 'Enviando...' : 'Fazer Upload'}</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      onChange={handleEditLogoUpload}
+                      className="hidden"
+                      disabled={isEditingUploadingLogo}
+                    />
+                  </label>
+                </div>
+
+                {/* Sugestões rápidas de ícones */}
+                <div className="flex items-center gap-1.5 pt-0.5 overflow-x-auto text-[10px]">
+                  <span className="text-slate-400 font-medium shrink-0">Sugestões rápidas:</span>
+                  {SAMPLE_LOGOS.map((sample, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setEditFormData({ ...editFormData, logo: sample.url })}
+                      className={`px-2 py-0.5 rounded-lg border text-[10px] transition-colors shrink-0 ${
+                        editFormData.logo === sample.url
+                          ? 'bg-amber-600 border-amber-600 text-white font-bold'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {sample.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Nome do Estabelecimento *
+              </label>
+              <input
+                type="text"
+                required
+                value={editFormData.name}
+                onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                placeholder="Ex: Açaí Puro Sabor"
+                className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Link Exclusivo da Loja (Slug) *
+              </label>
+              <div className="flex items-center rounded-xl border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-500">
+                <span className="px-2.5 py-2 text-xs font-mono text-slate-400 bg-slate-50 border-r border-slate-200 select-none">
+                  slug:
+                </span>
+                <input
+                  type="text"
+                  required
+                  value={editFormData.slug}
+                  onChange={(e) => setEditFormData({ ...editFormData, slug: sanitizeSlug(e.target.value) })}
+                  placeholder="nomeloja"
+                  className="w-full text-xs font-mono p-2.5 focus:outline-none"
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">
+                App: <strong className="text-orange-600">{getStoreAppUrlDisplay(editFormData.slug || 'loja')}</strong>
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Categoria *
+              </label>
+              <select
+                value={editFormData.categoryId || (categories.find((c) => c.name === editFormData.category)?.id ?? '')}
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  const catObj = categories.find((c) => c.id === selectedId);
+                  if (catObj) {
+                    setEditFormData((prev) => ({
+                      ...prev,
+                      categoryId: catObj.id,
+                      category: catObj.name,
+                    }));
+                  }
+                }}
+                className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 font-medium"
+              >
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Nome do Responsável *
+              </label>
+              <input
+                type="text"
+                required
+                value={editFormData.ownerName}
+                onChange={(e) => setEditFormData({ ...editFormData, ownerName: e.target.value })}
+                placeholder="Ex: Marcelo Guimarães"
+                className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">CNPJ *</label>
+              <input
+                type="text"
+                required
+                maxLength={18}
+                value={editFormData.cnpj}
+                onChange={(e) => setEditFormData({ ...editFormData, cnpj: maskCnpj(e.target.value) })}
+                placeholder="00.000.000/0001-00"
+                className="w-full text-xs font-mono border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Telefone / WhatsApp *</label>
+              <input
+                type="text"
+                required
+                maxLength={15}
+                value={editFormData.phone}
+                onChange={(e) => setEditFormData({ ...editFormData, phone: maskPhone(e.target.value) })}
+                placeholder="(11) 99999-8888"
+                className="w-full text-xs font-mono border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">E-mail de Contato *</label>
+              <input
+                type="email"
+                required
+                value={editFormData.email}
+                onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                placeholder="contato@restaurante.com.br"
+                className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">CEP *</label>
+              <input
+                type="text"
+                required
+                maxLength={9}
+                value={editFormData.zipCode}
+                onChange={(e) => {
+                  const masked = maskCep(e.target.value);
+                  setEditFormData((prev) => ({ ...prev, zipCode: masked }));
+                  const clean = masked.replace(/\D/g, '');
+                  if (clean.length === 8) {
+                    fetch(`https://viacep.com.br/ws/${clean}/json/`)
+                      .then((res) => res.json())
+                      .then((d) => {
+                        if (!d.erro) {
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            city: d.localidade || prev.city,
+                            state: d.uf || prev.state,
+                            address: d.logradouro ? `${d.logradouro}, nº , ${d.bairro || ''}` : prev.address,
+                          }));
+                        }
+                      })
+                      .catch(() => {});
+                  }
+                }}
+                placeholder="01000-000"
+                className="w-full text-xs font-mono border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Cidade / UF *</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  required
+                  value={editFormData.city}
+                  onChange={(e) => setEditFormData({ ...editFormData, city: e.target.value })}
+                  placeholder="Cidade"
+                  className="w-3/4 text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                />
+                <input
+                  type="text"
+                  required
+                  maxLength={2}
+                  value={editFormData.state}
+                  onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value.toUpperCase() })}
+                  placeholder="UF"
+                  className="w-1/4 text-xs font-mono border border-slate-300 rounded-xl p-2.5 text-center focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 uppercase"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Endereço Completo *</label>
+              <input
+                type="text"
+                required
+                value={editFormData.address}
+                onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+                placeholder="Rua, número, bairro"
+                className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Comissão da Plataforma (%)</label>
+              <input
+                type="number"
+                step="0.5"
+                value={editFormData.commissionRate}
+                onChange={(e) => setEditFormData({ ...editFormData, commissionRate: Number(e.target.value) })}
+                className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Taxa Fixa / Pedido (R$)</label>
+              <input
+                type="number"
+                step="0.10"
+                value={editFormData.fixedFee}
+                onChange={(e) => setEditFormData({ ...editFormData, fixedFee: Number(e.target.value) })}
+                className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Pedido Mínimo (R$)</label>
+              <input
+                type="number"
+                step="1"
+                value={editFormData.minimumOrder}
+                onChange={(e) => setEditFormData({ ...editFormData, minimumOrder: Number(e.target.value) })}
+                className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Taxa de Entrega Padrão (R$)</label>
+              <input
+                type="number"
+                step="0.5"
+                value={editFormData.deliveryFee}
+                onChange={(e) => setEditFormData({ ...editFormData, deliveryFee: Number(e.target.value) })}
+                className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Tempo de Entrega Estimado (Min / Max)</label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min={10}
+                  value={editFormData.deliveryTimeMin}
+                  onChange={(e) => setEditFormData({ ...editFormData, deliveryTimeMin: Number(e.target.value) })}
+                  placeholder="Min (minutos)"
+                  className="w-1/2 text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                />
+                <input
+                  type="number"
+                  min={15}
+                  value={editFormData.deliveryTimeMax}
+                  onChange={(e) => setEditFormData({ ...editFormData, deliveryTimeMax: Number(e.target.value) })}
+                  placeholder="Max (minutos)"
+                  className="w-1/2 text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Status Cadastral</label>
+              <select
+                value={editFormData.status}
+                onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as any })}
+                className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              >
+                <option value="Ativo">Ativo (Pronto para vendas)</option>
+                <option value="Pendente">Pendente (Aguardando homologação)</option>
+                <option value="Em análise">Em análise</option>
+                <option value="Suspenso">Suspenso</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <div>
+              <span className="text-xs font-bold text-slate-800 block">Status da Loja para Pedidos (Aberto/Fechado)</span>
+              <span className="text-[11px] text-slate-500">Define se o estabelecimento está aceitando novos pedidos no app neste momento.</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editFormData.isOpen}
+                onChange={(e) => setEditFormData({ ...editFormData, isOpen: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+          </div>
+
+          {/* Modal Actions */}
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditOpen(false);
+                setEditingRestaurant(null);
+              }}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isEditingSaving}
+              className="px-5 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs inline-flex items-center gap-1.5 transition-all"
+            >
+              {isEditingSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              <span>{isEditingSaving ? 'Salvando Alterações...' : 'Salvar Alterações'}</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Confirmation Dialog with justification for approval, rejection or suspension */}
       <ConfirmDialog
         isOpen={!!targetRestaurant && !!actionType}
@@ -1412,15 +1959,36 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
               >
                 <span>% Comissão</span>
               </button>
+
+              <button
+                onClick={() => {
+                  const target = drawerRestaurant;
+                  handleOpenEdit(target);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-colors"
+                title="Editar Dados Cadastrais e Logo"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span>Editar Dados</span>
+              </button>
             </div>
 
             {/* Drawer Body: Inspection Details */}
             <div className="p-5 space-y-5 text-xs text-slate-700 flex-1">
               {/* Documentos & Dados Cadastrais */}
               <div className="space-y-2.5">
-                <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider text-slate-400">
-                  Documentação & Dados Cadastrais
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider text-slate-400">
+                    Documentação & Dados Cadastrais
+                  </h3>
+                  <button
+                    onClick={() => handleOpenEdit(drawerRestaurant)}
+                    className="text-[11px] font-bold text-amber-600 hover:underline inline-flex items-center gap-1"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>Editar</span>
+                  </button>
+                </div>
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2">
                   <div className="flex justify-between">
                     <span className="text-slate-500">CNPJ:</span>
