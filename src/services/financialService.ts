@@ -115,22 +115,21 @@ export const financialService = {
    * Relatório de comissões retidas e repasses por loja
    */
   async fetchCommissions(restaurantId?: string, isSettled?: boolean): Promise<FinancialCommission[]> {
-    try {
-      const params: Record<string, any> = {};
-      if (restaurantId && restaurantId !== 'all') params.restaurant_id = restaurantId;
-      if (isSettled !== undefined) params.is_settled = isSettled;
+    const token = api.getToken();
+    if (token) {
+      try {
+        const params: Record<string, any> = {};
+        if (restaurantId && restaurantId !== 'all') params.restaurant_id = restaurantId;
+        if (isSettled !== undefined) params.is_settled = isSettled;
 
-      const data = await api.get<any>('/financial/commissions', params);
-      const list = Array.isArray(data) ? data : (data?.items || data?.data);
-      if (Array.isArray(list)) {
-        return list.map((item) => this.normalizeCommission(item));
+        const data = await api.get<any>('/financial/commissions', params);
+        const list = Array.isArray(data) ? data : (data?.items || data?.data);
+        if (Array.isArray(list)) {
+          return list.map((item) => this.normalizeCommission(item));
+        }
+      } catch (err) {
+        console.warn('API de comissões inacessível ou sem permissão:', err);
       }
-    } catch (err) {
-      console.warn('API de comissões inacessível ou sem permissão:', err);
-    }
-
-    if (!isMockEnabled()) {
-      return [];
     }
 
     const records = db.getFinancialRecords();

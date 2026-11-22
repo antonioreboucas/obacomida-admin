@@ -22,30 +22,29 @@ export const adminService = {
     page = 1,
     pageSize = 20
   ): Promise<{ items: AdminUser[]; total: number }> {
-    try {
-      const params: Record<string, any> = { page, page_size: pageSize, per_page: pageSize };
-      if (search) params.search = search;
-      if (role && role !== 'all') params.role = role.toUpperCase();
+    const token = api.getToken();
+    if (token) {
+      try {
+        const params: Record<string, any> = { page, per_page: pageSize };
+        if (search) params.search = search;
+        if (role && role !== 'all') params.role = role.toUpperCase();
 
-      const data = await api.get<any>('/admin/users', params);
+        const data = await api.get<any>('/admin/users', params);
 
-      if (Array.isArray(data)) {
-        return {
-          items: data.map((item) => this.normalizeFromApi(item)),
-          total: data.length,
-        };
-      } else if (data && typeof data === 'object' && Array.isArray(data.items)) {
-        return {
-          items: data.items.map((item: any) => this.normalizeFromApi(item)),
-          total: data.total || data.count || data.items.length,
-        };
+        if (Array.isArray(data)) {
+          return {
+            items: data.map((item) => this.normalizeFromApi(item)),
+            total: data.length,
+          };
+        } else if (data && typeof data === 'object' && Array.isArray(data.items)) {
+          return {
+            items: data.items.map((item: any) => this.normalizeFromApi(item)),
+            total: data.total || data.count || data.items.length,
+          };
+        }
+      } catch (err) {
+        console.warn('API de usuários inacessível ou sem permissão:', err);
       }
-    } catch (err) {
-      console.warn('API de usuários inacessível ou sem permissão:', err);
-    }
-
-    if (!isMockEnabled()) {
-      return { items: [], total: 0 };
     }
 
     const localUsers = this.getAll();

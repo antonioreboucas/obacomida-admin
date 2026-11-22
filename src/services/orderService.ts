@@ -98,10 +98,6 @@ export const orderService = {
       console.warn('API /orders inacessível ou sem permissão:', err);
     }
 
-    if (!isMockEnabled()) {
-      return (paramsOrFilters as any)?.page ? { items: [], total: 0 } : [];
-    }
-
     const all = db.getOrders();
     const filtered = all.filter((o) => {
       if (rawStatus && rawStatus !== 'all' && o.status !== rawStatus && BACKEND_STATUS_MAP[o.status] !== rawStatus) {

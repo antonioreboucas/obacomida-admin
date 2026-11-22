@@ -33,10 +33,6 @@ export const categoryService = {
       console.warn('API de categorias inacessível ou sem permissão:', err);
     }
 
-    if (!isMockEnabled()) {
-      return [];
-    }
-
     return this.getAll();
   },
 

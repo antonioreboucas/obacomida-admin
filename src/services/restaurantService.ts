@@ -102,10 +102,6 @@ export const restaurantService = {
       console.warn('API de restaurantes inacessível ou sem permissão:', err);
     }
 
-    if (!isMockEnabled()) {
-      return isParamObject ? { items: [], total: 0, page, per_page: perPage } : [];
-    }
-
     const all = db.getRestaurants();
     const filtered = all.filter((r) => {
       const matchStatus =

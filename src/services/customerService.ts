@@ -8,38 +8,47 @@ export const customerService = {
    * Lista clientes da plataforma
    */
   async fetchCustomers(search = '', page = 1, pageSize = 50): Promise<Customer[]> {
-    try {
-      const data = await api.get<any>('/admin/users', {
-        role: 'CUSTOMER',
-        search: search || undefined,
-        page,
-        page_size: pageSize,
-      });
+    const token = api.getToken();
+    if (token) {
+      try {
+        const data = await api.get<any>('/admin/users', {
+          role: 'CUSTOMER',
+          search: search || undefined,
+          page,
+          per_page: pageSize,
+        });
 
-      const list = Array.isArray(data) ? data : (data?.items || data?.data);
-      if (Array.isArray(list)) {
-        return list.map((item: any) => ({
-          id: String(item.id),
-          name: item.name || item.full_name || 'Cliente',
-          email: item.email || '',
-          phone: item.phone || '(11) 99999-0000',
-          createdAt: item.created_at || new Date().toISOString(),
-          status: item.is_active === false || item.is_blocked === true ? 'Inativo' : 'Ativo',
-          totalOrders: Number(item.total_orders ?? 0),
-          totalSpent: Number(item.total_spent ?? 0),
-          addresses: Array.isArray(item.addresses) ? item.addresses : [],
-          avatar: item.avatar || item.avatar_url,
-        }));
+        const list = Array.isArray(data) ? data : (data?.items || data?.data);
+        if (Array.isArray(list)) {
+          return list.map((item: any) => ({
+            id: String(item.id),
+            name: item.name || item.full_name || 'Cliente',
+            email: item.email || '',
+            phone: item.phone || '(11) 99999-0000',
+            createdAt: item.created_at || new Date().toISOString(),
+            status: item.is_active === false || item.is_blocked === true ? 'Inativo' : 'Ativo',
+            totalOrders: Number(item.total_orders ?? 0),
+            totalSpent: Number(item.total_spent ?? 0),
+            addresses: Array.isArray(item.addresses) ? item.addresses : [],
+            avatar: item.avatar || item.avatar_url,
+          }));
+        }
+      } catch (err) {
+        console.warn('API de clientes inacessível ou sem permissão:', err);
       }
-    } catch (err) {
-      console.warn('API de clientes inacessível ou sem permissão:', err);
     }
 
-    if (!isMockEnabled()) {
-      return [];
+    const local = this.getAll();
+    if (search) {
+      const s = search.toLowerCase();
+      return local.filter(
+        (c) =>
+          c.name.toLowerCase().includes(s) ||
+          c.email.toLowerCase().includes(s) ||
+          c.phone.includes(s)
+      );
     }
-
-    return this.getAll();
+    return local;
   },
 
   getAll(): Customer[] {
