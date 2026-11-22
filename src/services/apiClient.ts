@@ -227,17 +227,32 @@ export class ApiClient {
 
         if (data && typeof data === 'object') {
           if (data.error && typeof data.error === 'object') {
-            errorMessage = data.error.message || errorMessage;
             errorCode = data.error.code;
             errorDetails = data.error.details;
+            if (Array.isArray(errorDetails) && errorDetails.length > 0) {
+              const detailList = errorDetails.map((d: any) => {
+                const loc = Array.isArray(d.loc)
+                  ? d.loc.filter((p: string) => p !== 'body').join('.')
+                  : '';
+                return loc ? `${loc}: ${d.msg}` : d.msg;
+              });
+              errorMessage = `${data.error.message || 'Dados inválidos'}: ${detailList.join(' | ')}`;
+            } else {
+              errorMessage = data.error.message || errorMessage;
+            }
           } else if (data.detail) {
             if (typeof data.detail === 'string') {
               errorMessage = data.detail;
             } else if (Array.isArray(data.detail)) {
               // FastAPI Pydantic ValidationError
               errorDetails = data.detail;
-              const firstErr = data.detail[0];
-              errorMessage = firstErr?.msg ? `${firstErr.msg} (${firstErr.loc?.join('.')})` : errorMessage;
+              const detailList = data.detail.map((d: any) => {
+                const loc = Array.isArray(d.loc)
+                  ? d.loc.filter((p: string) => p !== 'body').join('.')
+                  : '';
+                return loc ? `${loc}: ${d.msg}` : d.msg;
+              });
+              errorMessage = `Erro de validação: ${detailList.join(' | ')}`;
             }
           } else if (data.message) {
             errorMessage = data.message;

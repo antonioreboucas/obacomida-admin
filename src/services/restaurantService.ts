@@ -1,5 +1,6 @@
 import { db } from '../storage/db';
 import { api, isMockEnabled } from './api';
+import { categoryService } from './categoryService';
 import type {
   Restaurant,
   RestaurantStatus,
@@ -74,7 +75,11 @@ export const restaurantService = {
         data = await api.get<any>('/admin/restaurants', queryParams);
       } catch (adminErr: any) {
         if (adminErr?.status === 403 || adminErr?.status === 404) {
-          data = await api.get<any>('/restaurants', queryParams);
+          try {
+            data = await api.get<any>('/partners/restaurants', queryParams);
+          } catch {
+            data = await api.get<any>('/restaurants', queryParams);
+          }
         } else {
           throw adminErr;
         }
@@ -312,19 +317,46 @@ export const restaurantService = {
 
     const cleanSlug = data.slug ? sanitizeSlug(data.slug) : generateSlug(data.name);
 
+    // Resolver UUID válido de categoria existente no banco
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let categoryId = data.categoryId;
+
+    if (!categoryId || !UUID_REGEX.test(categoryId)) {
+      try {
+        const liveCats = await categoryService.fetchCategories();
+        const match =
+          liveCats.find((c) => c.id === categoryId) ||
+          liveCats.find((c) => c.name.toLowerCase() === (data.category || '').toLowerCase()) ||
+          liveCats.find((c) => UUID_REGEX.test(c.id)) ||
+          liveCats[0];
+        if (match && UUID_REGEX.test(match.id)) {
+          categoryId = match.id;
+        }
+      } catch (catErr) {
+        console.warn('Erro ao resolver UUID da categoria:', catErr);
+      }
+    }
+
+    // Sanitizar CNPJ (mínimo 14 caracteres)
+    const rawCnpj = (data.cnpj || '').trim();
+    const cleanCnpj = rawCnpj.length >= 14 ? rawCnpj : rawCnpj.padStart(14, '0');
+
     // Separar rua, número e bairro do endereço informado
     const addressParts = (data.address || '').split(',').map((p) => p.trim());
-    const street = addressParts[0] || data.address || 'Rua Principal';
+    const street = addressParts[0] || (data.address || '').trim() || 'Rua Principal';
     const number = addressParts[1] || 'S/N';
     const neighborhood = addressParts[2] || 'Centro';
+    const city = (data.city || 'São Paulo').trim() || 'São Paulo';
+    const state = (data.state || 'SP').trim().toUpperCase().slice(0, 2) || 'SP';
+    const postalCode = (data.zipCode || '01000-000').trim() || '01000-000';
 
     const payload: CreateRestaurantRequest = {
-      trade_name: data.name,
-      corporate_name: data.ownerName || data.name,
-      cnpj: data.cnpj,
-      global_category_id: data.categoryId,
-      phone: data.phone,
-      email: data.email,
+      trade_name: data.name.trim(),
+      corporate_name: (data.ownerName || data.name).trim(),
+      cnpj: cleanCnpj,
+      global_category_id: categoryId,
+      phone: (data.phone || '').trim(),
+      email: (data.email || '').trim(),
       slug: cleanSlug,
       status: backendStatus as any,
       commission_rate: Number(data.commissionRate ?? 12.0),
@@ -332,11 +364,19 @@ export const restaurantService = {
       fixed_fee: Number(data.fixedFee ?? 1.50),
       minimum_order: Number(data.minimumOrder ?? 20.0),
       delivery_fee: Number(data.deliveryFee ?? 5.0),
-      average_delivery_time_min: Number(data.deliveryTimeMin ?? 25),
-      average_delivery_time_max: Number(data.deliveryTimeMax ?? 45),
+      average_delivery_time_min: Math.max(10, Number(data.deliveryTimeMin ?? 25)),
+      average_delivery_time_max: Math.max(15, Number(data.deliveryTimeMax ?? 45)),
       logo_url: data.logo || undefined,
       banner_url: data.coverImage || undefined,
-      owner_email: data.email,
+      owner_email: (data.email || '').trim(),
+      address: {
+        street,
+        number,
+        neighborhood,
+        city,
+        state,
+        postal_code: postalCode,
+      },
     };
 
     if (data.theme) {
@@ -348,32 +388,29 @@ export const restaurantService = {
       };
     }
 
-    if (data.city || data.state || data.address) {
-      payload.address = {
-        street,
-        number,
-        neighborhood,
-        city: data.city || 'São Paulo',
-        state: (data.state || 'SP').toUpperCase().slice(0, 2),
-        postal_code: data.zipCode || '01000-000',
-      };
+    let createdData: any = null;
+    let lastError: any = null;
+
+    // Tentamos /restaurants (suportado para parceiros/admins) e /admin/restaurants
+    const endpointsToTry = ['/restaurants', '/admin/restaurants'];
+
+    for (const endpoint of endpointsToTry) {
+      try {
+        createdData = await api.post<any>(endpoint, payload);
+        if (createdData) break;
+      } catch (err: any) {
+        lastError = err;
+        if (err?.status === 403 || err?.status === 404) {
+          continue;
+        }
+        throw err;
+      }
     }
 
-    let createdData: any = null;
-    try {
-      try {
-        createdData = await api.post<any>('/admin/restaurants', payload);
-      } catch (adminErr: any) {
-        if (adminErr?.status === 404 || adminErr?.status === 403) {
-          createdData = await api.post<any>('/restaurants', payload);
-        } else {
-          throw adminErr;
-        }
-      }
-    } catch (apiErr: any) {
-      console.warn('Erro ao salvar restaurante na API central:', apiErr);
+    if (!createdData && lastError) {
+      console.warn('Erro ao salvar restaurante na API central:', lastError);
       if (!isMockEnabled()) {
-        throw apiErr;
+        throw lastError;
       }
     }
 

@@ -270,12 +270,21 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
       return;
     }
 
-    const catObj =
-      categories.find((c) => c.id === newRestData.categoryId || c.name === newRestData.category) ||
+    const cleanCnpj = newRestData.cnpj.trim();
+    if (cleanCnpj.length < 14) {
+      error('O CNPJ deve ter no mínimo 14 caracteres (ex: 00.000.000/0001-00).');
+      return;
+    }
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let catObj =
+      categories.find((c) => c.id === newRestData.categoryId) ||
+      categories.find((c) => c.name.toLowerCase() === (newRestData.category || '').toLowerCase()) ||
+      categories.find((c) => UUID_REGEX.test(c.id)) ||
       categories[0];
 
     if (!catObj) {
-      error('Nenhuma categoria disponível. Cadastre ao menos uma categoria antes de criar um restaurante.');
+      error('Nenhuma categoria cadastrada no banco de dados. Cadastre ao menos uma categoria em "Categorias" antes de cadastrar o restaurante.');
       return;
     }
 
@@ -851,7 +860,7 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Cidade / UF *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Cidade / UF / CEP *</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -859,7 +868,7 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                       value={newRestData.city}
                       onChange={(e) => setNewRestData({ ...newRestData, city: e.target.value })}
                       placeholder="Cidade"
-                      className="w-3/4 text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                      className="w-1/2 text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                     />
                     <input
                       type="text"
@@ -868,7 +877,15 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                       value={newRestData.state}
                       onChange={(e) => setNewRestData({ ...newRestData, state: e.target.value.toUpperCase() })}
                       placeholder="UF"
-                      className="w-1/4 text-xs border border-slate-300 rounded-xl p-2.5 text-center focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                      className="w-1/6 text-xs border border-slate-300 rounded-xl p-2.5 text-center focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-mono"
+                    />
+                    <input
+                      type="text"
+                      required
+                      value={newRestData.zipCode}
+                      onChange={(e) => setNewRestData({ ...newRestData, zipCode: e.target.value })}
+                      placeholder="01000-000"
+                      className="w-1/3 text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-mono"
                     />
                   </div>
                 </div>
