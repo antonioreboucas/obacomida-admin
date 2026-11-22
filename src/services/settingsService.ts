@@ -32,10 +32,10 @@ export const settingsService = {
             maintenanceMode: Boolean(payload.maintenance_mode),
             autoApproveNewRestaurants: Boolean(payload.auto_approve_new_restaurants),
             supportOperatingHours: payload.support_operating_hours || 'Seg a Dom, 08h às 23h',
-            appDomain: payload.app_domain || 'obacomida.com.br',
+            appDomain: payload.app_domain || 'app-obacomida.vercel.app',
             appProtocol: payload.app_protocol || 'https',
-            appPathPattern: payload.app_path_pattern || '/{slug}-app',
-            partnerDomain: payload.partner_domain || 'parceiro.obacomida.com.br',
+            appPathPattern: payload.app_path_pattern || '/{slug}',
+            partnerDomain: payload.partner_domain || 'obacomida-partner.vercel.app',
             partnerProtocol: payload.partner_protocol || 'https',
             partnerPathPattern: payload.partner_path_pattern || '/{slug}',
           };

@@ -665,7 +665,7 @@ export const restaurantService = {
       history: [
         {
           date: new Date().toISOString(),
-          action: `Estabelecimento cadastrado com links personalizados (App: obacomida.com.br/${finalSlug}-app | Parceiro: obacomida.com.br/${finalSlug})`,
+          action: `Estabelecimento cadastrado com links personalizados (App: https://app-obacomida.vercel.app/${finalSlug} | Parceiro: https://obacomida-partner.vercel.app/${finalSlug})`,
           adminName: admin.name,
         },
       ],
@@ -746,7 +746,7 @@ export const restaurantService = {
       id,
       { slug: clean },
       admin,
-      `Link personalizado da loja atualizado para "${clean}" (App: obacomida.com.br/${clean}-app | Painel Parceiro: obacomida.com.br/${clean})`
+      `Link personalizado da loja atualizado para "${clean}" (App: https://app-obacomida.vercel.app/${clean} | Painel Parceiro: https://obacomida-partner.vercel.app/${clean})`
     );
     return { success: true, restaurant: updated };
   },

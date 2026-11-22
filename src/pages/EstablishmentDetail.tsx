@@ -26,6 +26,7 @@ import {
   LayoutDashboard,
   Upload,
   Loader2,
+  ExternalLink,
 } from 'lucide-react';
 import { restaurantService } from '../services/restaurantService';
 import { orderService } from '../services/orderService';
@@ -584,17 +585,29 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
                 </div>
                 <div className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 font-mono text-xs text-orange-700">
                   <span className="truncate select-all">{getStoreAppUrlDisplay(restaurant.slug)}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(getStoreAppUrl(restaurant.slug));
-                      success('Link do Aplicativo copiado!');
-                    }}
-                    className="p-1 hover:bg-white text-slate-600 hover:text-orange-600 rounded transition-colors"
-                    title="Copiar link do App"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = getStoreAppUrl(restaurant.slug);
+                        navigator.clipboard.writeText(url);
+                        success('Link copiado!', `Link do restaurante copiado: ${url}`);
+                      }}
+                      className="p-1 hover:bg-white text-slate-600 hover:text-orange-600 rounded transition-colors"
+                      title="Copiar link do App"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                    <a
+                      href={getStoreAppUrl(restaurant.slug)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1 hover:bg-white text-slate-600 hover:text-orange-600 rounded transition-colors"
+                      title="Abrir página da loja no aplicativo em nova aba"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
                 </div>
                 <p className="text-[11px] text-slate-500">
                   Acessado pelos clientes para consultar o cardápio e realizar pedidos com a identidade visual da loja.
@@ -1183,23 +1196,23 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Link Exclusivo da Loja (Slug) *
+                Identificador do Link (Slug) *
               </label>
               <div className="flex items-center rounded-xl border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-500">
                 <span className="px-2.5 py-2 text-xs font-mono text-slate-400 bg-slate-50 border-r border-slate-200 select-none">
-                  slug:
+                  Identificador (slug):
                 </span>
                 <input
                   type="text"
                   required
                   value={editFormData.slug}
                   onChange={(e) => setEditFormData({ ...editFormData, slug: sanitizeSlug(e.target.value) })}
-                  placeholder="nomeloja"
+                  placeholder="ex: acai-prime, burger-king"
                   className="w-full text-xs font-mono p-2.5 focus:outline-none"
                 />
               </div>
               <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">
-                App: <strong className="text-orange-600">{getStoreAppUrlDisplay(editFormData.slug || 'loja')}</strong>
+                🔗 Link gerado: <strong className="text-orange-600">https://app-obacomida.vercel.app/{editFormData.slug || '{slug}'}</strong>
               </p>
             </div>
 

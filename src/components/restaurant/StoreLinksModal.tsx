@@ -47,9 +47,15 @@ export const StoreLinksModal: React.FC<StoreLinksModalProps> = ({
   // Edit slug state
   const [isEditingSlug, setIsEditingSlug] = useState(false);
   const [newSlug, setNewSlug] = useState(restaurant.slug || '');
+  const [savedSlug, setSavedSlug] = useState(restaurant.slug || '');
   const [slugError, setSlugError] = useState('');
 
-  const currentSlug = restaurant.slug || '';
+  React.useEffect(() => {
+    setSavedSlug(restaurant.slug || '');
+    setNewSlug(restaurant.slug || '');
+  }, [restaurant.slug]);
+
+  const currentSlug = savedSlug || restaurant.slug || '';
   const appDisplayUrl = getStoreAppUrlDisplay(currentSlug);
   const partnerDisplayUrl = getStorePartnerUrlDisplay(currentSlug);
   const appFullUrl = getStoreAppUrl(currentSlug);
@@ -106,6 +112,7 @@ export const StoreLinksModal: React.FC<StoreLinksModalProps> = ({
       error(res.error || 'Erro ao atualizar o link da loja.');
       return;
     }
+    setSavedSlug(newSlug);
     success(`Link da loja atualizado com sucesso para "${newSlug}"!`);
     setIsEditingSlug(false);
     onUpdated?.();
@@ -162,6 +169,17 @@ export const StoreLinksModal: React.FC<StoreLinksModalProps> = ({
                 {copiedApp ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedApp ? 'Copiado!' : 'Copiar'}</span>
               </button>
+
+              <a
+                href={appFullUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-2.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 shadow-xs"
+                title="Abrir página da loja no aplicativo em nova aba"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Abrir Loja</span>
+              </a>
 
               <button
                 type="button"
@@ -267,7 +285,7 @@ export const StoreLinksModal: React.FC<StoreLinksModalProps> = ({
               <div>
                 <div className="flex items-center rounded-xl border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-orange-500">
                   <span className="px-3 py-2 text-xs font-mono text-slate-400 bg-slate-50 border-r border-slate-200 select-none">
-                    obacomida.com.br/
+                    app-obacomida.vercel.app/
                   </span>
                   <input
                     type="text"
@@ -290,13 +308,13 @@ export const StoreLinksModal: React.FC<StoreLinksModalProps> = ({
                   <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] space-y-1 text-emerald-900">
                     <p className="font-bold flex items-center gap-1">
                       <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      Links resultantes:
+                      Preview em tempo real:
                     </p>
                     <p className="font-mono text-[10px]">
-                      • App: <span className="font-bold">{getStoreAppUrlDisplay(newSlug)}</span>
+                      • App: <span className="font-bold text-orange-600">https://app-obacomida.vercel.app/{newSlug}</span>
                     </p>
                     <p className="font-mono text-[10px]">
-                      • Parceiro: <span className="font-bold">{getStorePartnerUrlDisplay(newSlug)}</span>
+                      • Parceiro: <span className="font-bold text-slate-700">{getStorePartnerUrlDisplay(newSlug)}</span>
                     </p>
                   </div>
                 )}

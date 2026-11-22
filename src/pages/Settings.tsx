@@ -127,14 +127,14 @@ export const SettingsPage: React.FC = () => {
       case 'vercel':
         setSettings({
           ...settings,
-          appDomain: 'obacomida-app.vercel.app',
+          appDomain: 'app-obacomida.vercel.app',
           appProtocol: 'https',
-          appPathPattern: '/{slug}-app',
+          appPathPattern: '/{slug}',
           partnerDomain: 'obacomida-partner.vercel.app',
           partnerProtocol: 'https',
           partnerPathPattern: '/{slug}',
         });
-        info('Preset aplicado', 'URLs temporárias de deploy (Vercel) configuradas.');
+        info('Preset aplicado', 'URLs da Vercel (app-obacomida.vercel.app/{slug}) configuradas com sucesso.');
         break;
       case 'localhost':
         setSettings({
@@ -382,11 +382,11 @@ export const SettingsPage: React.FC = () => {
                     <input
                       type="text"
                       required
-                      value={settings.appPathPattern || '/{slug}-app'}
+                      value={settings.appPathPattern || '/{slug}'}
                       onChange={(e) =>
                         setSettings({ ...settings, appPathPattern: e.target.value })
                       }
-                      placeholder="/{slug}-app"
+                      placeholder="/{slug}"
                       className="w-full p-2.5 border border-slate-300 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                     />
                     <div className="flex items-center gap-2 mt-1.5">

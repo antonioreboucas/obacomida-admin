@@ -21,6 +21,8 @@ import {
   Smartphone,
   Image as ImageIcon,
   Edit2,
+  Copy,
+  ExternalLink,
 } from 'lucide-react';
 import { restaurantService } from '../services/restaurantService';
 import { categoryService } from '../services/categoryService';
@@ -37,8 +39,7 @@ import { getDefaultThemeForCategory, THEME_PRESETS } from '../utils/themePresets
 import {
   generateSlug,
   sanitizeSlug,
-  getStoreAppUrlDisplay,
-  getStorePartnerUrlDisplay,
+  getStoreAppUrl,
 } from '../utils/slugUtils';
 import { maskCnpj, maskPhone, maskCep } from '../utils/maskUtils';
 import type { Restaurant, RestaurantStatus, Category } from '../types';
@@ -427,6 +428,12 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
     }
   };
 
+  const handleCopyConsumerLink = (r: Restaurant) => {
+    const url = getStoreAppUrl(r.slug);
+    navigator.clipboard.writeText(url);
+    success('Link copiado!', `Link do restaurante copiado: ${url}`);
+  };
+
   const handleCreateRestaurant = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRestData.name?.trim() || !newRestData.ownerName?.trim() || !newRestData.phone?.trim() || !newRestData.cnpj?.trim()) {
@@ -753,6 +760,25 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                       </button>
 
                       <button
+                        type="button"
+                        onClick={() => handleCopyConsumerLink(r)}
+                        title="Copiar Link do App Consumidor"
+                        className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+
+                      <a
+                        href={getStoreAppUrl(r.slug)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Abrir ${r.name} no App Consumidor em nova aba`}
+                        className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors inline-flex items-center"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+
+                      <button
                         onClick={() => setSelectedLinksRestaurant(r)}
                         title="Links Oficiais (App & Painel Parceiro)"
                         className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
@@ -1024,7 +1050,7 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Link Exclusivo da Loja (Slug) *
+                    Identificador do Link (Slug) *
                   </label>
                   <div className="flex items-center rounded-xl border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-orange-500">
                     <span className="px-2.5 py-2 text-xs font-mono text-slate-400 bg-slate-50 border-r border-slate-200 select-none">
@@ -1038,12 +1064,12 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                         const clean = sanitizeSlug(e.target.value);
                         setNewRestData({ ...newRestData, slug: clean, slugManuallyEdited: true });
                       }}
-                      placeholder="nomeloja"
+                      placeholder="ex: acai-prime, burger-king"
                       className="w-full text-xs font-mono p-2.5 focus:outline-none"
                     />
                   </div>
                   <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">
-                    App: <strong className="text-orange-600">{getStoreAppUrlDisplay(newRestData.slug || 'loja')}</strong> | Parceiro: <strong className="text-slate-700">{getStorePartnerUrlDisplay(newRestData.slug || 'loja')}</strong>
+                    🔗 Link gerado: <strong className="text-orange-600">https://app-obacomida.vercel.app/{newRestData.slug || '{slug}'}</strong>
                   </p>
                 </div>
 
@@ -1437,23 +1463,23 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Link Exclusivo da Loja (Slug) *
+                Identificador do Link (Slug) *
               </label>
               <div className="flex items-center rounded-xl border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-500">
                 <span className="px-2.5 py-2 text-xs font-mono text-slate-400 bg-slate-50 border-r border-slate-200 select-none">
-                  slug:
+                  Identificador (slug):
                 </span>
                 <input
                   type="text"
                   required
                   value={editFormData.slug}
                   onChange={(e) => setEditFormData({ ...editFormData, slug: sanitizeSlug(e.target.value) })}
-                  placeholder="nomeloja"
+                  placeholder="ex: acai-prime, burger-king"
                   className="w-full text-xs font-mono p-2.5 focus:outline-none"
                 />
               </div>
               <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">
-                App: <strong className="text-orange-600">{getStoreAppUrlDisplay(editFormData.slug || 'loja')}</strong>
+                🔗 Link gerado: <strong className="text-orange-600">https://app-obacomida.vercel.app/{editFormData.slug || '{slug}'}</strong>
               </p>
             </div>
 
@@ -2068,7 +2094,7 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Link App:</span>
-                    <span className="font-mono text-orange-600 font-bold">/{drawerRestaurant.slug}-app</span>
+                    <span className="font-mono text-orange-600 font-bold">/{drawerRestaurant.slug}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Painel Parceiro:</span>

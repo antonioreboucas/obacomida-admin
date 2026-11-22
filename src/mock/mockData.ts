@@ -44,10 +44,10 @@ export const initialSettings: PlatformSettings = {
   maintenanceMode: false,
   autoApproveNewRestaurants: false,
   supportOperatingHours: '08:00 às 23:30 (Segunda a Domingo)',
-  appDomain: 'obacomida.com.br',
+  appDomain: 'app-obacomida.vercel.app',
   appProtocol: 'https',
-  appPathPattern: '/{slug}-app',
-  partnerDomain: 'obacomida.com.br',
+  appPathPattern: '/{slug}',
+  partnerDomain: 'obacomida-partner.vercel.app',
   partnerProtocol: 'https',
   partnerPathPattern: '/{slug}',
 };

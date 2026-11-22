@@ -39,18 +39,20 @@ function getActiveSettings(): Partial<PlatformSettings> | null {
 
 /**
  * Monta a URL completa do Aplicativo do Consumidor
- * Ex: https://obacomida.com.br/{slug}-app ou https://app.meudominio.com.br/{slug}
+ * Ex: https://app-obacomida.vercel.app/{slug}
  */
 export function getStoreAppUrl(slug: string, overrideSettings?: Partial<PlatformSettings>): string {
   const clean = sanitizeSlug(slug);
   const cfg = overrideSettings || getActiveSettings();
 
-  const domain = (cfg?.appDomain || 'obacomida.com.br')
+  // Domínio padrão atualizado para o app na Vercel
+  const domain = (cfg?.appDomain || 'app-obacomida.vercel.app')
     .trim()
     .replace(/^https?:\/\//i, '')
     .replace(/\/+$/, '');
   const protocol = cfg?.appProtocol || 'https';
-  const rawPattern = cfg?.appPathPattern || '/{slug}-app';
+  // Rota direta: /{slug}
+  const rawPattern = cfg?.appPathPattern || '/{slug}';
 
   const pattern = rawPattern.replace('{slug}', clean);
   const path = pattern.startsWith('/') ? pattern : `/${pattern}`;
@@ -60,13 +62,13 @@ export function getStoreAppUrl(slug: string, overrideSettings?: Partial<Platform
 
 /**
  * Monta a URL completa do Painel do Parceiro
- * Ex: https://obacomida.com.br/{slug} ou https://parceiro.meudominio.com.br/{slug}
+ * Ex: https://obacomida-partner.vercel.app/{slug} ou https://obacomida.com.br/{slug}
  */
 export function getStorePartnerUrl(slug: string, overrideSettings?: Partial<PlatformSettings>): string {
   const clean = sanitizeSlug(slug);
   const cfg = overrideSettings || getActiveSettings();
 
-  const domain = (cfg?.partnerDomain || 'obacomida.com.br')
+  const domain = (cfg?.partnerDomain || 'obacomida-partner.vercel.app')
     .trim()
     .replace(/^https?:\/\//i, '')
     .replace(/\/+$/, '');
@@ -81,17 +83,17 @@ export function getStorePartnerUrl(slug: string, overrideSettings?: Partial<Plat
 
 /**
  * Versão amigável de exibição do link do App (sem http/https)
- * Ex: obacomida.com.br/nomeloja-app
+ * Ex: app-obacomida.vercel.app/nomeloja
  */
 export function getStoreAppUrlDisplay(slug: string, overrideSettings?: Partial<PlatformSettings>): string {
   const clean = sanitizeSlug(slug);
   const cfg = overrideSettings || getActiveSettings();
 
-  const domain = (cfg?.appDomain || 'obacomida.com.br')
+  const domain = (cfg?.appDomain || 'app-obacomida.vercel.app')
     .trim()
     .replace(/^https?:\/\//i, '')
     .replace(/\/+$/, '');
-  const rawPattern = cfg?.appPathPattern || '/{slug}-app';
+  const rawPattern = cfg?.appPathPattern || '/{slug}';
 
   const pattern = rawPattern.replace('{slug}', clean);
   const path = pattern.startsWith('/') ? pattern : `/${pattern}`;
@@ -107,7 +109,7 @@ export function getStorePartnerUrlDisplay(slug: string, overrideSettings?: Parti
   const clean = sanitizeSlug(slug);
   const cfg = overrideSettings || getActiveSettings();
 
-  const domain = (cfg?.partnerDomain || 'obacomida.com.br')
+  const domain = (cfg?.partnerDomain || 'obacomida-partner.vercel.app')
     .trim()
     .replace(/^https?:\/\//i, '')
     .replace(/\/+$/, '');
