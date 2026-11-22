@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { THEME_PRESETS, type ThemePreset } from '../../utils/themePresets';
 import type { StoreTheme } from '../../types';
-import { Palette, Sparkles, Smartphone, Check, ShoppingBag, Star, Heart } from 'lucide-react';
+import { Palette, Sparkles, Smartphone, Check, ShoppingBag, Star, Heart, Upload, Loader2 } from 'lucide-react';
+import { uploadService } from '../../services/uploadService';
 
 interface StoreThemePickerProps {
   theme: StoreTheme;
@@ -9,6 +10,7 @@ interface StoreThemePickerProps {
   restaurantName?: string;
   categoryName?: string;
   logoUrl?: string;
+  onLogoChange?: (url: string) => void;
 }
 
 export const StoreThemePicker: React.FC<StoreThemePickerProps> = ({
@@ -17,9 +19,29 @@ export const StoreThemePicker: React.FC<StoreThemePickerProps> = ({
   restaurantName = 'Nome da Loja',
   categoryName = 'Gastronomia',
   logoUrl = 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80',
+  onLogoChange,
 }) => {
   const [selectedPreset, setSelectedPreset] = useState<string>(theme.presetKey || 'padrao');
   const [showCustom, setShowCustom] = useState<boolean>(theme.presetKey === 'custom');
+  const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
+
+  const handleUploadInsideMockup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onLogoChange) return;
+
+    setIsUploadingLogo(true);
+    try {
+      const res = await uploadService.uploadImage(file, 'logos');
+      if (res && res.url) {
+        onLogoChange(res.url);
+      }
+    } catch (err) {
+      console.warn('Erro ao enviar imagem no picker:', err);
+    } finally {
+      setIsUploadingLogo(false);
+      e.target.value = '';
+    }
+  };
 
   useEffect(() => {
     setSelectedPreset(theme.presetKey || 'padrao');
@@ -215,11 +237,36 @@ export const StoreThemePicker: React.FC<StoreThemePickerProps> = ({
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <img
-                    src={logoUrl}
-                    alt={restaurantName}
-                    className="w-12 h-12 rounded-xl object-cover ring-2 ring-white/70 shadow-md shrink-0 bg-white"
-                  />
+                  <div className="relative group/mocklogo shrink-0">
+                    <img
+                      src={logoUrl}
+                      alt={restaurantName}
+                      className="w-12 h-12 rounded-xl object-cover ring-2 ring-white/70 shadow-md shrink-0 bg-white"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src =
+                          'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80';
+                      }}
+                    />
+                    {onLogoChange && (
+                      <label
+                        className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center opacity-0 group-hover/mocklogo:opacity-100 transition-opacity cursor-pointer text-white shadow-xs"
+                        title="Clique para trocar a logo exibida no app"
+                      >
+                        {isUploadingLogo ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        ) : (
+                          <Upload className="w-4 h-4 text-white" />
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleUploadInsideMockup}
+                          className="hidden"
+                          disabled={isUploadingLogo}
+                        />
+                      </label>
+                    )}
+                  </div>
                   <div className="min-w-0">
                     <h5 className="font-extrabold text-sm text-white leading-tight truncate">
                       {restaurantName}
