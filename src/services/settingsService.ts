@@ -62,8 +62,11 @@ export const settingsService = {
   async updateApi(
     updates: Partial<PlatformSettings>,
     admin: AdminUser
-  ): Promise<PlatformSettings> {
+  ): Promise<PlatformSettings & { _apiSynced?: boolean; _syncError?: string }> {
     const token = api.getToken();
+    let apiSynced = false;
+    let syncError: string | undefined = undefined;
+
     if (token) {
       try {
         const payload: PlatformSettingsUpdate = {
@@ -91,14 +94,18 @@ export const settingsService = {
         };
 
         await api.put('/admin/settings', payload);
-      } catch (err) {
+        apiSynced = true;
+      } catch (err: any) {
+        syncError = err?.message || 'Servidor indisponível ou bloqueado por política de CORS.';
         console.warn('Erro ao atualizar configurações via PUT /admin/settings, aplicando fallback local:', err);
       }
     } else {
+      syncError = 'Sessão administrativa local (sem token ativo na API remota).';
       console.info('Configurações salvas localmente (sessão administrativa sem token ativo na API remota).');
     }
 
-    return this.update(updates, admin);
+    const updated = this.update(updates, admin);
+    return Object.assign(updated, { _apiSynced: apiSynced, _syncError: syncError });
   },
 
   update(updates: Partial<PlatformSettings>, admin: AdminUser): PlatformSettings {

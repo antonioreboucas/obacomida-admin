@@ -90,6 +90,12 @@ export class ApiClient {
       const stored = localStorage.getItem(STORAGE_KEYS.API_URL);
       if (stored) return stored.trim().replace(/\/+$/, '');
 
+      // In hosted Vercel environment, default to same-origin /api/v1 proxy (configured in vercel.json)
+      // to eliminate cross-origin preflight/CORS blocks on preview and custom domains
+      if (window.location.hostname && window.location.hostname.endsWith('vercel.app')) {
+        return '/api/v1';
+      }
+
       // In hosted/production environment, default to Railway production API
       if (
         window.location.hostname &&
@@ -205,6 +211,32 @@ export class ApiClient {
         const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
         if (!error.response) {
+          // If direct API failed with Network/CORS error and we are in browser, try local proxy /api/v1 if not already tried
+          if (
+            originalRequest &&
+            !(originalRequest as any)._proxyRetry &&
+            typeof window !== 'undefined' &&
+            this.baseUrl.startsWith('http') &&
+            (error.code === 'ERR_NETWORK' || error.message === 'Network Error')
+          ) {
+            (originalRequest as any)._proxyRetry = true;
+            try {
+              const proxyConfig: AxiosRequestConfig = {
+                ...originalRequest,
+                baseURL: '/api/v1',
+              };
+              const proxyRes = await axios(proxyConfig);
+              // Proxy succeeded! Switch base URL to /api/v1
+              this.baseUrl = '/api/v1';
+              this.axiosInstance.defaults.baseURL = '/api/v1';
+              this.isOnline = true;
+              this.notifyStatus();
+              return proxyRes;
+            } catch {
+              // Proxy attempt also failed, proceed with normal error reporting
+            }
+          }
+
           // Network Error, CORS block or Server Offline
           this.isOnline = false;
           this.notifyStatus();
@@ -380,6 +412,25 @@ export class ApiClient {
       this.notifyStatus();
       return { connected: ok, url: this.baseUrl };
     } catch (err: any) {
+      // Fallback probe to same-origin /api/v1/health proxy if external was blocked by CORS
+      if (typeof window !== 'undefined' && this.baseUrl.startsWith('http')) {
+        try {
+          const proxyRes = await axios.get('/api/v1/health', {
+            timeout: 3000,
+            validateStatus: () => true,
+          });
+          if (proxyRes.status < 500) {
+            this.baseUrl = '/api/v1';
+            this.axiosInstance.defaults.baseURL = '/api/v1';
+            this.isOnline = true;
+            this.notifyStatus();
+            return { connected: true, url: '/api/v1' };
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       // Fallback probe to root OpenAPI docs
       try {
         const rootUrl = this.baseUrl.replace(/\/api\/v1\/?$/, '');

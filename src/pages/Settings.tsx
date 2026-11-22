@@ -79,10 +79,35 @@ export const SettingsPage: React.FC = () => {
     setSettings({ ...settings, allowedPaymentMethods: updated });
   };
 
+  const [isSaving, setIsSaving] = useState(false);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    await settingsService.updateApi(settings, currentUser);
-    success('Configurações globais salvas com sucesso!', 'Os novos domínios e parâmetros já estão em vigor.');
+    setIsSaving(true);
+    try {
+      const res = await settingsService.updateApi(settings, currentUser);
+      if (res._apiSynced) {
+        success(
+          'Configurações salvas no servidor!',
+          'Os novos domínios e parâmetros foram sincronizados com a API central e já estão em vigor.'
+        );
+      } else if (res._syncError) {
+        info(
+          'Configurações salvas localmente (Fallback)',
+          'As configurações foram salvas com sucesso no cache local da sua máquina. (A sincronização remota aplicou fallback: ' +
+            (res._syncError.includes('CORS')
+              ? 'origem não autorizada na política de CORS da API'
+              : res._syncError.includes('permissão') || res._syncError.includes('Acesso negado')
+              ? 'usuário sem perfil de administrador no banco de dados'
+              : res._syncError) +
+            ').'
+        );
+      } else {
+        success('Configurações globais salvas com sucesso!', 'Os novos domínios e parâmetros já estão em vigor.');
+      }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleFactoryReset = () => {
@@ -903,10 +928,11 @@ export const SettingsPage: React.FC = () => {
         <div className="flex justify-end pt-2">
           <button
             type="submit"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-600/20 transition-all active:scale-98"
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-600/20 transition-all active:scale-98 cursor-pointer disabled:cursor-not-allowed"
           >
             <Save className="w-4 h-4" />
-            <span>Salvar Alterações Globais</span>
+            <span>{isSaving ? 'Salvando...' : 'Salvar Alterações Globais'}</span>
           </button>
         </div>
       </form>
