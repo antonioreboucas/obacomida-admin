@@ -79,11 +79,13 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
 
   // Register New Restaurant Modal
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [createTab, setCreateTab] = useState<'info' | 'theme'>('info');
   const [newRestData, setNewRestData] = useState({
     name: '',
     slug: '',
     slugManuallyEdited: false,
+    categoryId: '',
     category: 'Hamburguerias',
     ownerName: '',
     phone: '',
@@ -99,10 +101,10 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
     deliveryTimeMin: 25,
     deliveryTimeMax: 40,
     deliveryFee: 6.9,
-    logo: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80',
-    coverImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=80',
+    logo: 'https://images.unsplash.com/photo-1550547660-d9450f859349?w=120&auto=format&fit=crop&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?w=800&auto=format&fit=crop&q=80',
     isOpen: true,
-    status: 'Pendente' as RestaurantStatus,
+    status: 'Ativo' as RestaurantStatus,
     theme: getDefaultThemeForCategory('Hamburguerias'),
   });
 
@@ -115,6 +117,13 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
       ]);
       setRestaurants(data);
       setCategories(cats);
+      if (cats && cats.length > 0) {
+        setNewRestData((prev) => ({
+          ...prev,
+          categoryId: prev.categoryId || cats[0].id,
+          category: prev.categoryId ? prev.category : cats[0].name,
+        }));
+      }
     } catch (err) {
       console.warn('Erro ao carregar lista de estabelecimentos:', err);
     } finally {
@@ -254,33 +263,76 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
     }
   };
 
-  const handleCreateRestaurant = (e: React.FormEvent) => {
+  const handleCreateRestaurant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRestData.name || !newRestData.ownerName || !newRestData.phone || !newRestData.cnpj) {
-      error('Preencha os campos obrigatórios.');
+    if (!newRestData.name?.trim() || !newRestData.ownerName?.trim() || !newRestData.phone?.trim() || !newRestData.cnpj?.trim()) {
+      error('Preencha os campos obrigatórios (Nome, Responsável, Telefone e CNPJ).');
       return;
     }
 
-    const catObj = categories.find((c) => c.name === newRestData.category) || categories[0];
+    const catObj =
+      categories.find((c) => c.id === newRestData.categoryId || c.name === newRestData.category) ||
+      categories[0];
+
+    if (!catObj) {
+      error('Nenhuma categoria disponível. Cadastre ao menos uma categoria antes de criar um restaurante.');
+      return;
+    }
+
     const finalSlug = newRestData.slug ? sanitizeSlug(newRestData.slug) : generateSlug(newRestData.name);
 
-    if (!restaurantService.isSlugAvailable(finalSlug)) {
-      error(`O link/slug "${finalSlug}" já está em uso por outro parceiro. Escolha outro identificador.`);
-      return;
-    }
+    setIsCreating(true);
+    try {
+      await restaurantService.createApi(
+        {
+          ...newRestData,
+          slug: finalSlug,
+          categoryId: catObj.id,
+          category: catObj.name,
+        },
+        currentUser
+      );
 
-    restaurantService.create(
-      {
-        ...newRestData,
-        slug: finalSlug,
+      success(`Restaurante "${newRestData.name}" salvo com sucesso no banco de dados!`);
+      setIsCreateOpen(false);
+      setNewRestData({
+        name: '',
+        slug: '',
+        slugManuallyEdited: false,
         categoryId: catObj.id,
-      },
-      currentUser
-    );
-
-    success(`Restaurante "${newRestData.name}" cadastrado com sucesso!`);
-    setIsCreateOpen(false);
-    refreshList();
+        category: catObj.name,
+        ownerName: '',
+        phone: '',
+        email: '',
+        city: 'São Paulo',
+        state: 'SP',
+        address: '',
+        zipCode: '01000-000',
+        cnpj: '',
+        commissionRate: 12.0,
+        fixedFee: 1.5,
+        minimumOrder: 25.0,
+        deliveryTimeMin: 25,
+        deliveryTimeMax: 40,
+        deliveryFee: 6.9,
+        logo: 'https://images.unsplash.com/photo-1550547660-d9450f859349?w=120&auto=format&fit=crop&q=80',
+        coverImage: 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?w=800&auto=format&fit=crop&q=80',
+        isOpen: true,
+        status: 'Ativo' as RestaurantStatus,
+        theme: getDefaultThemeForCategory(catObj.name),
+      });
+      setCreateTab('info');
+      await refreshList();
+    } catch (err: any) {
+      const errorMsg =
+        err?.message ||
+        err?.data?.message ||
+        err?.data?.detail ||
+        'Não foi possível salvar o restaurante no banco de dados.';
+      error('Falha ao cadastrar restaurante', errorMsg);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -725,19 +777,23 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                     Categoria * <span className="text-[10px] text-orange-600 font-normal">(Sugere paleta de cores automática)</span>
                   </label>
                   <select
-                    value={newRestData.category}
+                    value={newRestData.categoryId || (categories.find((c) => c.name === newRestData.category)?.id ?? '')}
                     onChange={(e) => {
-                      const newCat = e.target.value;
-                      setNewRestData((prev) => ({
-                        ...prev,
-                        category: newCat,
-                        theme: getDefaultThemeForCategory(newCat),
-                      }));
+                      const selectedId = e.target.value;
+                      const catObj = categories.find((c) => c.id === selectedId);
+                      if (catObj) {
+                        setNewRestData((prev) => ({
+                          ...prev,
+                          categoryId: catObj.id,
+                          category: catObj.name,
+                          theme: getDefaultThemeForCategory(catObj.name),
+                        }));
+                      }
                     }}
                     className="w-full text-xs border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-medium"
                   >
                     {categories.map((c) => (
-                      <option key={c.id} value={c.name}>
+                      <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
                     ))}
@@ -937,9 +993,11 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
               )}
               <button
                 type="submit"
-                className="px-5 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-700 rounded-xl shadow-xs"
+                disabled={isCreating}
+                className="px-5 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs inline-flex items-center gap-1.5 transition-all"
               >
-                Salvar Estabelecimento
+                {isCreating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isCreating ? 'Salvando no Banco...' : 'Salvar Estabelecimento'}</span>
               </button>
             </div>
           </div>

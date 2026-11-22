@@ -12,6 +12,7 @@ import type {
   CheckSlugResponse,
   RestaurantDetail,
   RestaurantListItem,
+  CreateRestaurantRequest,
 } from '../types/api';
 import { generateSlug, sanitizeSlug, getStoreAppUrl, getStorePartnerUrl } from '../utils/slugUtils';
 
@@ -271,6 +272,158 @@ export const restaurantService = {
     }
 
     return this.updateCommission(id, commissionRate, fixedFee, admin, justification);
+  },
+
+  /**
+   * POST /api/v1/admin/restaurants (com fallback para /api/v1/restaurants)
+   * Cadastra novo restaurante diretamente no banco de dados via API Central FastAPI
+   */
+  async createApi(
+    data: {
+      name: string;
+      ownerName: string;
+      cnpj: string;
+      phone: string;
+      email: string;
+      categoryId: string;
+      category?: string;
+      slug?: string;
+      city?: string;
+      state?: string;
+      address?: string;
+      zipCode?: string;
+      commissionRate?: number;
+      fixedFee?: number;
+      minimumOrder?: number;
+      deliveryTimeMin?: number;
+      deliveryTimeMax?: number;
+      deliveryFee?: number;
+      logo?: string;
+      coverImage?: string;
+      status?: RestaurantStatus;
+      theme?: StoreTheme;
+    },
+    admin: AdminUser
+  ): Promise<Restaurant> {
+    const backendStatus =
+      data.status && STATUS_TO_BACKEND[data.status]
+        ? STATUS_TO_BACKEND[data.status]
+        : 'ACTIVE';
+
+    const cleanSlug = data.slug ? sanitizeSlug(data.slug) : generateSlug(data.name);
+
+    // Separar rua, número e bairro do endereço informado
+    const addressParts = (data.address || '').split(',').map((p) => p.trim());
+    const street = addressParts[0] || data.address || 'Rua Principal';
+    const number = addressParts[1] || 'S/N';
+    const neighborhood = addressParts[2] || 'Centro';
+
+    const payload: CreateRestaurantRequest = {
+      trade_name: data.name,
+      corporate_name: data.ownerName || data.name,
+      cnpj: data.cnpj,
+      global_category_id: data.categoryId,
+      phone: data.phone,
+      email: data.email,
+      slug: cleanSlug,
+      status: backendStatus as any,
+      commission_rate: Number(data.commissionRate ?? 12.0),
+      commission_percentage: Number(data.commissionRate ?? 12.0),
+      fixed_fee: Number(data.fixedFee ?? 1.50),
+      minimum_order: Number(data.minimumOrder ?? 20.0),
+      delivery_fee: Number(data.deliveryFee ?? 5.0),
+      average_delivery_time_min: Number(data.deliveryTimeMin ?? 25),
+      average_delivery_time_max: Number(data.deliveryTimeMax ?? 45),
+      logo_url: data.logo || undefined,
+      banner_url: data.coverImage || undefined,
+      owner_email: data.email,
+    };
+
+    if (data.theme) {
+      payload.theme = {
+        primary_color: data.theme.primaryColor,
+        secondary_color: data.theme.secondaryColor,
+        preset_key: data.theme.presetKey,
+        text_color: data.theme.textColor,
+      };
+    }
+
+    if (data.city || data.state || data.address) {
+      payload.address = {
+        street,
+        number,
+        neighborhood,
+        city: data.city || 'São Paulo',
+        state: (data.state || 'SP').toUpperCase().slice(0, 2),
+        postal_code: data.zipCode || '01000-000',
+      };
+    }
+
+    let createdData: any = null;
+    try {
+      try {
+        createdData = await api.post<any>('/admin/restaurants', payload);
+      } catch (adminErr: any) {
+        if (adminErr?.status === 404 || adminErr?.status === 403) {
+          createdData = await api.post<any>('/restaurants', payload);
+        } else {
+          throw adminErr;
+        }
+      }
+    } catch (apiErr: any) {
+      console.warn('Erro ao salvar restaurante na API central:', apiErr);
+      if (!isMockEnabled()) {
+        throw apiErr;
+      }
+    }
+
+    if (createdData) {
+      const normalized = this.normalizeFromApi(createdData);
+      const current = db.getRestaurants();
+      db.saveRestaurants([normalized, ...current.filter((r) => r.id !== normalized.id)]);
+      db.logAudit({
+        adminId: admin.id,
+        adminName: admin.name,
+        adminRole: admin.role,
+        action: 'Cadastro de estabelecimento',
+        module: 'Restaurantes',
+        entityId: normalized.id,
+        details: `Restaurante ${normalized.name} cadastrado com sucesso via API no banco de dados.`,
+        currentValue: JSON.stringify({ name: normalized.name, slug: normalized.slug, cnpj: normalized.cnpj, status: normalized.status }),
+      });
+      return normalized;
+    }
+
+    // Fallback local se mock habilitado
+    return this.create(
+      {
+        ...data,
+        slug: cleanSlug,
+        name: data.name,
+        ownerName: data.ownerName,
+        phone: data.phone,
+        email: data.email,
+        city: data.city || 'São Paulo',
+        state: data.state || 'SP',
+        address: data.address || '',
+        zipCode: data.zipCode || '01000-000',
+        cnpj: data.cnpj,
+        category: data.category || 'Restaurantes',
+        categoryId: data.categoryId,
+        commissionRate: data.commissionRate ?? 12.0,
+        fixedFee: data.fixedFee ?? 1.5,
+        minimumOrder: data.minimumOrder ?? 20.0,
+        deliveryTimeMin: data.deliveryTimeMin ?? 25,
+        deliveryTimeMax: data.deliveryTimeMax ?? 45,
+        deliveryFee: data.deliveryFee ?? 5.0,
+        logo: data.logo || '',
+        coverImage: data.coverImage || '',
+        isOpen: true,
+        status: data.status || 'Ativo',
+        theme: data.theme,
+      },
+      admin
+    );
   },
 
   normalizeFromApi(item: any): Restaurant {

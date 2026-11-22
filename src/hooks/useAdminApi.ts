@@ -149,6 +149,24 @@ export function useUpdateRestaurantTheme() {
   });
 }
 
+export function useCreateRestaurant() {
+  const queryClient = useQueryClient();
+  const { currentUser } = useAuth();
+  const { success, error } = useToast();
+
+  return useMutation({
+    mutationFn: (data: any) => restaurantService.createApi(data, currentUser),
+    onSuccess: (newRestaurant) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'restaurants'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard-metrics'] });
+      success('Restaurante cadastrado!', `Restaurante "${newRestaurant.name}" salvo com sucesso no banco de dados.`);
+    },
+    onError: (err: any) => {
+      error('Falha ao cadastrar restaurante', err.message || 'Erro ao salvar no banco de dados.');
+    },
+  });
+}
+
 // ==========================================
 // MÓDULO 4: Usuários & Permissões (RBAC)
 // ==========================================

@@ -205,6 +205,45 @@ export interface UpdateRestaurantThemeRequest {
   theme: RestaurantThemeConfig;
 }
 
+export interface AddressCreateRequest {
+  street: string;
+  number: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  complement?: string;
+  reference_point?: string;
+  latitude?: number;
+  longitude?: number;
+  is_default?: boolean;
+}
+
+export interface CreateRestaurantRequest {
+  trade_name: string;
+  corporate_name: string;
+  cnpj: string;
+  global_category_id: string;
+  phone: string;
+  email: string;
+  slug?: string;
+  theme?: RestaurantThemeConfig;
+  description?: string;
+  logo_url?: string;
+  banner_url?: string;
+  minimum_order?: number;
+  delivery_fee?: number;
+  average_delivery_time_min?: number;
+  average_delivery_time_max?: number;
+  address?: AddressCreateRequest;
+  status?: RestaurantStatus;
+  commission_rate?: number;
+  commission_percentage?: number;
+  fixed_fee?: number;
+  service_fee?: number;
+  owner_email?: string;
+}
+
 export interface RestaurantQueryParams {
   status?: RestaurantStatus | string;
   city?: string;
