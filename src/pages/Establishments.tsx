@@ -23,6 +23,7 @@ import {
   Edit2,
   Copy,
   ExternalLink,
+  KeyRound,
 } from 'lucide-react';
 import { restaurantService } from '../services/restaurantService';
 import { categoryService } from '../services/categoryService';
@@ -35,6 +36,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { Pagination } from '../components/common/Pagination';
 import { StoreThemePicker } from '../components/restaurant/StoreThemePicker';
 import { StoreLinksModal } from '../components/restaurant/StoreLinksModal';
+import { PartnerAccessSection } from '../components/restaurant/PartnerAccessSection';
 import { getDefaultThemeForCategory, THEME_PRESETS } from '../utils/themePresets';
 import {
   generateSlug,
@@ -93,6 +95,9 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
 
   // Store Links Modal
   const [selectedLinksRestaurant, setSelectedLinksRestaurant] = useState<Restaurant | null>(null);
+
+  // Partner Access Modal
+  const [selectedAccessRestaurant, setSelectedAccessRestaurant] = useState<Restaurant | null>(null);
 
   // Register New Restaurant Modal
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -735,6 +740,14 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
 
                   <td className="py-3.5 px-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        onClick={() => setSelectedAccessRestaurant(r)}
+                        title="Acesso do Parceiro (Login, Senha e Credenciais)"
+                        className="p-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors border border-amber-200/60"
+                      >
+                        <KeyRound className="w-4 h-4" />
+                      </button>
+
                       <button
                         onClick={() => setDrawerRestaurant(r)}
                         title="Inspecionar Dados e Ações Rápidas (Drawer Lateral)"
@@ -1802,6 +1815,26 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
         />
       )}
 
+      {/* Partner Access Modal */}
+      {selectedAccessRestaurant && (
+        <Modal
+          isOpen={!!selectedAccessRestaurant}
+          onClose={() => setSelectedAccessRestaurant(null)}
+          title={`Acesso do Parceiro — ${selectedAccessRestaurant.name}`}
+          subtitle="Gerenciamento de credenciais, senha e comunicação com o lojista"
+          maxWidth="4xl"
+        >
+          <PartnerAccessSection
+            restaurant={selectedAccessRestaurant}
+            onRefreshRestaurant={() => {
+              refreshList();
+              const updated = restaurantService.getById(selectedAccessRestaurant.id);
+              if (updated) setSelectedAccessRestaurant(updated);
+            }}
+          />
+        </Modal>
+      )}
+
       {/* Quick Commission Edit Modal (PATCH /api/v1/admin/restaurants/{id}/commission) */}
       <Modal
         isOpen={!!commissionTarget}
@@ -2115,6 +2148,36 @@ export const Establishments: React.FC<EstablishmentsProps> = ({ onViewDetails })
                       />
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Acesso do Parceiro */}
+              <div className="space-y-2.5">
+                <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider text-slate-400">
+                  Acesso do Parceiro (Login & Senha)
+                </h3>
+                <div className="p-3 bg-gradient-to-br from-amber-50 to-orange-50/70 rounded-xl border border-amber-200/80 space-y-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <div className="p-2 bg-amber-100 text-amber-700 rounded-lg shrink-0 mt-0.5">
+                      <KeyRound className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">Credenciais & Painel do Lojista</p>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        Definir ou alterar senha, bloquear acesso e enviar instruções pelo WhatsApp.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const target = drawerRestaurant;
+                      setSelectedAccessRestaurant(target);
+                    }}
+                    className="w-full py-2 px-3 text-xs font-bold text-amber-900 bg-amber-200/80 hover:bg-amber-300 rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Gerenciar Credenciais do Parceiro</span>
+                  </button>
                 </div>
               </div>
             </div>
