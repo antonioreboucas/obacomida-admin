@@ -27,6 +27,7 @@ import {
   Upload,
   Loader2,
   ExternalLink,
+  KeyRound,
 } from 'lucide-react';
 import { restaurantService } from '../services/restaurantService';
 import { orderService } from '../services/orderService';
@@ -41,6 +42,7 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { StoreThemePicker } from '../components/restaurant/StoreThemePicker';
 import { StoreLinksModal } from '../components/restaurant/StoreLinksModal';
+import { PartnerAccessSection } from '../components/restaurant/PartnerAccessSection';
 import { THEME_PRESETS, getDefaultThemeForCategory } from '../utils/themePresets';
 import {
   getStoreAppUrlDisplay,
@@ -79,7 +81,7 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
     restaurantService.getById(restaurantId)
   );
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'financial' | 'reviews' | 'history' | 'theme'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'access' | 'orders' | 'financial' | 'reviews' | 'history' | 'theme'>('overview');
 
   const [currentTheme, setCurrentTheme] = useState<StoreTheme>(() =>
     restaurant?.theme || getDefaultThemeForCategory(restaurant?.category || 'Restaurantes')
@@ -388,6 +390,19 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('access')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${
+              activeTab === 'access'
+                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'
+            }`}
+            title="Gerenciar credenciais, senha e acesso do parceiro ao painel"
+          >
+            <KeyRound className={`w-4 h-4 ${activeTab === 'access' ? 'text-white' : 'text-orange-600'}`} />
+            <span>Acesso Parceiro</span>
+          </button>
+
+          <button
             onClick={() => setIsLinksOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-700 hover:bg-slate-50 rounded-xl border border-slate-300 text-xs font-bold transition-colors"
             title="Ver links exclusivos do App e do Painel Parceiro"
@@ -523,6 +538,7 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
           <div className="flex items-center gap-2 border-b border-slate-200 pt-2 overflow-x-auto">
             {[
               { id: 'overview', label: 'Visão Geral & Cadastro' },
+              { id: 'access', label: '🔑 Acesso ao Painel Parceiro' },
               { id: 'theme', label: '🎨 Cores da Loja no App' },
               { id: 'orders', label: `Pedidos Realizados (${orders.length})` },
               { id: 'financial', label: 'Dados Financeiros & Extrato' },
@@ -639,9 +655,19 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
                     <Copy className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Acessado pelo restaurante parceiro para gerenciar pedidos, cardápio e operação.
-                </p>
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <p className="text-[11px] text-slate-500">
+                    Acessado pelo restaurante parceiro para gerenciar pedidos, cardápio e operação.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('access')}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 hover:underline shrink-0 cursor-pointer"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Gerenciar Login & Senha</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -736,6 +762,14 @@ export const EstablishmentDetail: React.FC<EstablishmentDetailProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Partner Portal Access Tab */}
+      {activeTab === 'access' && (
+        <PartnerAccessSection
+          restaurant={restaurant}
+          onRefreshRestaurant={refreshRestaurant}
+        />
       )}
 
       {/* Store Theme Tab */}

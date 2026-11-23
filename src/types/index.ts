@@ -69,6 +69,22 @@ export interface Restaurant {
   }[];
 }
 
+export interface PartnerAccess {
+  restaurantId: string;
+  restaurantName: string;
+  restaurantSlug: string;
+  userId?: string;
+  ownerName: string;
+  email: string;
+  phone?: string;
+  status: 'Ativo' | 'Bloqueado' | 'Pendente';
+  temporaryPassword?: string;
+  lastAccess?: string;
+  createdAt: string;
+  updatedAt: string;
+  lastUpdatedBy?: string;
+}
+
 export interface CustomerAddress {
   id: string;
   title: string; // e.g. 'Casa', 'Trabalho'

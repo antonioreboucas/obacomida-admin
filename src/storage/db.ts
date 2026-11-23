@@ -27,6 +27,7 @@ import type {
   SupportTicket,
   AuditLog,
   PlatformSettings,
+  PartnerAccess,
 } from '../types';
 
 const STORAGE_KEYS = {
@@ -43,6 +44,7 @@ const STORAGE_KEYS = {
   AUDIT: 'obacomida_audit',
   SETTINGS: 'obacomida_settings',
   ACTIVE_USER: 'obacomida_active_user',
+  PARTNER_ACCESS: 'obacomida_partner_access',
   VERSION: 'obacomida_db_version_v1',
 };
 
@@ -327,6 +329,25 @@ class MockDatabase {
   }
   public saveSettings(settings: PlatformSettings): void {
     this.setItem(STORAGE_KEYS.SETTINGS, settings);
+  }
+
+  // Partner Access Management
+  public getPartnerAccesses(): Record<string, PartnerAccess> {
+    return this.getItem<Record<string, PartnerAccess>>(STORAGE_KEYS.PARTNER_ACCESS, {});
+  }
+  public getPartnerAccess(restaurantId: string): PartnerAccess | undefined {
+    const map = this.getPartnerAccesses();
+    return map[restaurantId];
+  }
+  public savePartnerAccess(access: PartnerAccess): void {
+    const map = this.getPartnerAccesses();
+    map[access.restaurantId] = access;
+    this.setItem(STORAGE_KEYS.PARTNER_ACCESS, map);
+  }
+  public deletePartnerAccess(restaurantId: string): void {
+    const map = this.getPartnerAccesses();
+    delete map[restaurantId];
+    this.setItem(STORAGE_KEYS.PARTNER_ACCESS, map);
   }
 }
 
